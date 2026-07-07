@@ -1,0 +1,109 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="note_avalonia.TrayMenuWindow"
+        Width="138" Height="160"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        CanResize="False"
+        Topmost="True"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent">
+
+  <Window.Styles>
+    <Style Selector="Button.TrayMenuItem">
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="Padding" Value="7,0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="Button.TrayMenuItem /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.TrayMenuItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource BgHoverBrush}"/>
+    </Style>
+    <Style Selector="Button.TrayMenuItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource SurfaceActiveBrush}"/>
+    </Style>
+    <Style Selector="Button.TrayMenuItem TextBlock.Label">
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="Button.TrayMenuItem PathIcon">
+      <Setter Property="Foreground" Value="{StaticResource IconDefaultBrush}"/>
+    </Style>
+    <Style Selector="Button.TrayMenuItem:pointerover PathIcon">
+      <Setter Property="Foreground" Value="{StaticResource IconHoverBrush}"/>
+    </Style>
+    <Style Selector="Button.TrayMenuItem.Accent PathIcon">
+      <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}"/>
+    </Style>
+    <Style Selector="Button.TrayMenuItem.Danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource DangerSubtleBrush}"/>
+    </Style>
+    <Style Selector="Button.TrayMenuItem.Danger:pointerover TextBlock.Label">
+      <Setter Property="Foreground" Value="{StaticResource DangerPrimaryBrush}"/>
+    </Style>
+    <Style Selector="Button.TrayMenuItem.Danger:pointerover PathIcon">
+      <Setter Property="Foreground" Value="{StaticResource DangerPrimaryBrush}"/>
+    </Style>
+  </Window.Styles>
+
+  <Border Background="{StaticResource SurfacePrimaryBrush}"
+          BorderBrush="{StaticResource BorderEmphasisBrush}"
+          BorderThickness="1"
+          CornerRadius="12"
+          Padding="6">
+    <Grid RowDefinitions="Auto,Auto,Auto">
+      <StackPanel Grid.Row="0" Spacing="1" HorizontalAlignment="Stretch">
+        <Button Classes="TrayMenuItem Accent" Click="OnOpenClick">
+          <Grid ColumnDefinitions="18,*" VerticalAlignment="Center" HorizontalAlignment="Stretch">
+            <PathIcon Data="{StaticResource MemoIcon}" Width="15" Height="15" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Classes="Label" Text="打开备忘录" VerticalAlignment="Center" Margin="5,0,0,0" TextTrimming="CharacterEllipsis"/>
+          </Grid>
+        </Button>
+        <Button Classes="TrayMenuItem" Click="OnNewMemoClick">
+          <Grid ColumnDefinitions="18,*" VerticalAlignment="Center" HorizontalAlignment="Stretch">
+            <PathIcon Data="{StaticResource SearchIcon}" Width="15" Height="15" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Classes="Label" Text="新建备忘录" VerticalAlignment="Center" Margin="5,0,0,0" TextTrimming="CharacterEllipsis"/>
+          </Grid>
+        </Button>
+      </StackPanel>
+
+      <Border Grid.Row="1" Height="1" Background="{StaticResource BorderSubtleBrush}" Margin="8,5"/>
+
+      <StackPanel Grid.Row="2" Spacing="1" HorizontalAlignment="Stretch">
+        <Button Classes="TrayMenuItem" Click="OnPinClick">
+          <Grid ColumnDefinitions="18,*,Auto" VerticalAlignment="Center" HorizontalAlignment="Stretch">
+            <PathIcon Data="{StaticResource PinIcon}" Width="15" Height="15" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Classes="Label" Text="窗口置顶" VerticalAlignment="Center" Margin="5,0,0,0" TextTrimming="CharacterEllipsis"/>
+            <Border Grid.Column="2"
+                    x:Name="_pinStatusBadge"
+                    CornerRadius="7"
+                    Background="{StaticResource AccentSubtleBrush}"
+                    Padding="4,1"
+                    VerticalAlignment="Center">
+              <TextBlock x:Name="_pinStatusText" Text="关闭" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource TextTertiaryBrush}"/>
+            </Border>
+          </Grid>
+        </Button>
+        <Button Classes="TrayMenuItem Danger" Click="OnExitClick">
+          <Grid ColumnDefinitions="18,*" VerticalAlignment="Center" HorizontalAlignment="Stretch">
+            <PathIcon Data="{StaticResource CloseIcon}" Width="15" Height="15" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Classes="Label" Text="退出应用" VerticalAlignment="Center" Margin="5,0,0,0" TextTrimming="CharacterEllipsis"/>
+          </Grid>
+        </Button>
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>

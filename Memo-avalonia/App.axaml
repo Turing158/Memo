@@ -1,0 +1,446 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="note_avalonia.App"
+             RequestedThemeVariant="Default">
+
+  <Application.Resources>
+    <!-- ════════════════════════════════════════════════════════════════
+         Warm Liné · 暖色亚麻 设计系统
+         ──────────────────────────────────────────────────────────────
+         设计原则：纸张质感 · 层次深度 · 克制动效 · 可读优先
+         对比度：正文 ≥ 7:1 (AAA) · 副文 ≥ 4.5:1 (AA)
+         备注：Avalonia 11.1 不支持 BoxShadows，使用边框/背景层次表达深度
+         ════════════════════════════════════════════════════════════════ -->
+
+    <!-- ── 背景色（三级层次） ── -->
+    <Color x:Key="BgPrimary">#F6F3EC</Color>      <!-- 主背景：暖米白 -->
+    <Color x:Key="BgSecondary">#FAF8F3</Color>    <!-- 次级：更亮的面 -->
+    <Color x:Key="BgTertiary">#EFEAE1</Color>     <!-- 三级：按压/分隔 -->
+    <Color x:Key="BgHover">#EBE5DA</Color>         <!-- 悬停底 -->
+
+    <!-- ── 表面色（卡片/输入框） ── -->
+    <Color x:Key="SurfacePrimary">#FFFFFF</Color>  <!-- 主卡片面 -->
+    <Color x:Key="SurfaceHover">#FBF9F4</Color>    <!-- 卡片悬停 -->
+    <Color x:Key="SurfaceActive">#F2EDE4</Color>   <!-- 卡片按下 -->
+
+    <!-- ── 边框 ── -->
+    <Color x:Key="BorderDefault">#E5DDD1</Color>   <!-- 默认描边 -->
+    <Color x:Key="BorderHover">#D6CDBE</Color>     <!-- 悬停描边 -->
+    <Color x:Key="BorderSubtle">#EDE8DD</Color>    <!-- 弱化描边 -->
+    <Color x:Key="BorderEmphasis">#CDBBA8</Color>  <!-- 强调描边（深度感） -->
+    <Color x:Key="BorderFocus">#C97B5A</Color>     <!-- 聚焦描边：暖焦橙 -->
+
+    <!-- ── 暖焦橙（主强调色） ── -->
+    <Color x:Key="AccentPrimary">#C06A48</Color>    <!-- 主强调：赤陶橙 -->
+    <Color x:Key="AccentHover">#A8583A</Color>      <!-- 悬停加深 -->
+    <Color x:Key="AccentMuted">#E8C4A8</Color>      <!-- 弱化强调 -->
+    <Color x:Key="AccentSubtle">#FAEDE4</Color>     <!-- 极淡强调底 -->
+    <Color x:Key="AccentPressed">#964E32</Color>    <!-- 按下态 -->
+
+    <!-- ── 语义色 ── -->
+    <Color x:Key="DangerPrimary">#C5543D</Color>    <!-- 危险红 -->
+    <Color x:Key="DangerHover">#A8432E</Color>       <!-- 危险悬停 -->
+    <Color x:Key="DangerSubtle">#FBE8E3</Color>     <!-- 危险淡底 -->
+    <Color x:Key="SuccessPrimary">#4E8B6F</Color>   <!-- 成功绿 -->
+    <Color x:Key="SuccessSubtle">#E4F0EA</Color>    <!-- 成功淡底 -->
+
+    <!-- ── 文本色（暖黑层次） ── -->
+    <Color x:Key="TextPrimary">#1E1A16</Color>     <!-- 主文本：暖黑 · 对比度 ~16:1 -->
+    <Color x:Key="TextSecondary">#5C554D</Color>    <!-- 副文本 · 对比度 ~6.5:1 -->
+    <Color x:Key="TextTertiary">#8A8278</Color>     <!-- 三级文本 · 对比度 ~4.6:1 -->
+    <Color x:Key="TextDisabled">#B0A79B</Color>     <!-- 占位/禁用 -->
+
+    <!-- ── 图标 ── -->
+    <Color x:Key="IconDefault">#6B6359</Color>      <!-- 图标默认 -->
+    <Color x:Key="IconHover">#1E1A16</Color>        <!-- 图标悬停 -->
+    <Color x:Key="IconAccent">#C06A48</Color>       <!-- 图标强调 -->
+
+    <!-- ══════════ 画刷 ══════════ -->
+
+    <!-- 背景 -->
+    <SolidColorBrush x:Key="BgPrimaryBrush" Color="{StaticResource BgPrimary}"/>
+    <SolidColorBrush x:Key="BgSecondaryBrush" Color="{StaticResource BgSecondary}"/>
+    <SolidColorBrush x:Key="BgTertiaryBrush" Color="{StaticResource BgTertiary}"/>
+    <SolidColorBrush x:Key="BgHoverBrush" Color="{StaticResource BgHover}"/>
+
+    <!-- 表面 -->
+    <SolidColorBrush x:Key="SurfacePrimaryBrush" Color="{StaticResource SurfacePrimary}"/>
+    <SolidColorBrush x:Key="SurfaceHoverBrush" Color="{StaticResource SurfaceHover}"/>
+    <SolidColorBrush x:Key="SurfaceActiveBrush" Color="{StaticResource SurfaceActive}"/>
+
+    <!-- 边框 -->
+    <SolidColorBrush x:Key="BorderDefaultBrush" Color="{StaticResource BorderDefault}"/>
+    <SolidColorBrush x:Key="BorderHoverBrush" Color="{StaticResource BorderHover}"/>
+    <SolidColorBrush x:Key="BorderSubtleBrush" Color="{StaticResource BorderSubtle}"/>
+    <SolidColorBrush x:Key="BorderEmphasisBrush" Color="{StaticResource BorderEmphasis}"/>
+    <SolidColorBrush x:Key="BorderFocusBrush" Color="{StaticResource BorderFocus}"/>
+
+    <!-- 强调 -->
+    <SolidColorBrush x:Key="AccentPrimaryBrush" Color="{StaticResource AccentPrimary}"/>
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHover}"/>
+    <SolidColorBrush x:Key="AccentMutedBrush" Color="{StaticResource AccentMuted}"/>
+    <SolidColorBrush x:Key="AccentSubtleBrush" Color="{StaticResource AccentSubtle}"/>
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="{StaticResource AccentPressed}"/>
+
+    <!-- 语义 -->
+    <SolidColorBrush x:Key="DangerPrimaryBrush" Color="{StaticResource DangerPrimary}"/>
+    <SolidColorBrush x:Key="DangerHoverBrush" Color="{StaticResource DangerHover}"/>
+    <SolidColorBrush x:Key="DangerSubtleBrush" Color="{StaticResource DangerSubtle}"/>
+    <SolidColorBrush x:Key="SuccessPrimaryBrush" Color="{StaticResource SuccessPrimary}"/>
+    <SolidColorBrush x:Key="SuccessSubtleBrush" Color="{StaticResource SuccessSubtle}"/>
+
+    <!-- 文本 -->
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}"/>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}"/>
+    <SolidColorBrush x:Key="TextTertiaryBrush" Color="{StaticResource TextTertiary}"/>
+    <SolidColorBrush x:Key="TextDisabledBrush" Color="{StaticResource TextDisabled}"/>
+
+    <!-- 图标 -->
+    <SolidColorBrush x:Key="IconDefaultBrush" Color="{StaticResource IconDefault}"/>
+    <SolidColorBrush x:Key="IconHoverBrush" Color="{StaticResource IconHover}"/>
+    <SolidColorBrush x:Key="IconAccentBrush" Color="{StaticResource IconAccent}"/>
+
+    <!-- ══════════ 圆角 ══════════ -->
+    <CornerRadius x:Key="RadiusSm">6</CornerRadius>
+    <CornerRadius x:Key="RadiusMd">10</CornerRadius>
+    <CornerRadius x:Key="RadiusLg">14</CornerRadius>
+    <CornerRadius x:Key="RadiusXl">20</CornerRadius>
+    <CornerRadius x:Key="RadiusFull">999</CornerRadius>
+
+    <!-- ══════════ SVG 图标 Geometry ══════════ -->
+    <!-- Warm Mark · 暖印 — refined stroke-based icons · 24×24 viewBox · stroke 1.5 · cap/join round -->
+    <!-- Settings: crisp 8-tooth gear with hub hole (no rotation trick) -->
+    <StreamGeometry x:Key="SettingsIcon">
+      F1M18.38,13.27 L20.83,13.76 L20.83,10.24 L18.38,10.73 L17.4,8.39 L19.48,7.0 L17.0,4.52 L15.61,6.6 L13.27,5.62 L13.76,3.17 L10.24,3.17 L10.73,5.62 L8.39,6.6 L7.0,4.52 L4.52,7.0 L6.6,8.39 L5.62,10.73 L3.17,10.24 L3.17,13.76 L5.62,13.27 L6.6,15.61 L4.52,17.0 L7.0,19.48 L8.39,17.4 L10.73,18.38 L10.24,20.83 L13.76,20.83 L13.27,18.38 L15.61,17.4 L17.0,19.48 L19.48,17.0 L17.4,15.61 Z M12,8.8 C13.77,8.8 15.2,10.23 15.2,12 C15.2,13.77 13.77,15.2 12,15.2 C10.23,15.2 8.8,13.77 8.8,12 C8.8,10.23 10.23,8.8 12,8.8 Z
+    </StreamGeometry>
+    <!-- Pin: filled pushpin — elliptical dome head + tapered needle, no rotation · 24×24 viewBox -->
+    <StreamGeometry x:Key="PinIcon">
+      F1M7,8.5 A5,4,0,1,1,17,8.5 A5,4,0,1,1,7,8.5 Z M11.25,12.25 L12.75,12.25 L12.75,21.5 L12,22.5 L11.25,21.5 Z
+    </StreamGeometry>
+    <!-- Minimize: single horizontal gesture with soft rounded terminals -->
+    <StreamGeometry x:Key="MinimizeIcon">
+      F1M5.5,11.2 L18.5,11.2 C18.9,11.2 19.2,11.5 19.2,11.9 L19.2,12.1 C19.2,12.5 18.9,12.8 18.5,12.8 L5.5,12.8 C5.1,12.8 4.8,12.5 4.8,12.1 L4.8,11.9 C4.8,11.5 5.1,11.2 5.5,11.2 Z
+    </StreamGeometry>
+    <!-- Close: two crossed brushstrokes with soft rounded terminals -->
+    <StreamGeometry x:Key="CloseIcon">
+      F1M5.93,7.07 L7.07,5.93 L18.07,16.93 L16.93,18.07 Z M16.93,5.93 L18.07,7.07 L7.07,18.07 L5.93,16.93 Z
+    </StreamGeometry>
+    <StreamGeometry x:Key="DeleteIcon">
+      M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z
+    </StreamGeometry>
+    <StreamGeometry x:Key="DeleteXIcon">
+      M12,2C6.47,2 2,6.47 2,12S6.47,22 12,22 22,17.53 22,12 17.53,2 12,2M17,15.59L15.59,17L12,13.41L8.41,17L7,15.59L10.59,12L7,8.41L8.41,7L12,10.59L15.59,7L17,8.41L13.41,12L17,15.59Z
+    </StreamGeometry>
+    <StreamGeometry x:Key="SearchIcon">
+      M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z
+    </StreamGeometry>
+    <StreamGeometry x:Key="ChevronDownIcon">
+      M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z
+    </StreamGeometry>
+    <StreamGeometry x:Key="MemoIcon">
+      M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z
+    </StreamGeometry>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme />
+
+    <!-- ═══════════════════════════════════════════════
+         全局窗口基础样式
+         ═══════════════════════════════════════════════ -->
+    <Style Selector="Window">
+      <Setter Property="Background" Value="{StaticResource BgPrimaryBrush}"/>
+      <Setter Property="FontFamily" Value="Inter, Microsoft YaHei, Microsoft YaHei UI, sans-serif"/>
+      <Setter Property="FontSize" Value="14"/>
+    </Style>
+
+    <!-- ═══════════════════════════════════════════════
+         标题栏图标按钮 · 方形微交互按钮
+         - 默认透明底
+         - 悬停：柔和暖底 + 图标变深（150ms 过渡）
+         - 按下：进一步加深
+         ═══════════════════════════════════════════════ -->
+    <Style Selector="Button.TitleBarBtn">
+      <Setter Property="Width" Value="34"/>
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.TitleBarBtn /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.15"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.TitleBarBtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource BgHoverBrush}"/>
+    </Style>
+    <Style Selector="Button.TitleBarBtn PathIcon">
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Foreground" Duration="0:0:0.15"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.TitleBarBtn:pointerover PathIcon">
+      <Setter Property="Foreground" Value="{StaticResource IconHoverBrush}"/>
+    </Style>
+    <Style Selector="Button.TitleBarBtn:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource BorderDefaultBrush}"/>
+    </Style>
+
+    <!-- 置顶激活态：浅暖橙底 + 暖橙图标 · 轻量提示感 · 带过渡动画 -->
+    <Style Selector="Button.PinActive /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.PinActive">
+      <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}"/>
+    </Style>
+    <Style Selector="Button.PinActive:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource AccentMutedBrush}"/>
+    </Style>
+    <Style Selector="Button.PinActive PathIcon">
+      <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}"/>
+    </Style>
+    <!-- 置顶按钮激活时图标倾斜 -45° -->
+    <Style Selector="Button.PinActive PathIcon">
+      <Setter Property="RenderTransform">
+        <RotateTransform Angle="-45"/>
+      </Setter>
+    </Style>
+
+    <!-- 关闭按钮悬停：变红警示 -->
+    <Style Selector="Button.TitleBarBtn.CloseBtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource DangerSubtleBrush}"/>
+    </Style>
+    <Style Selector="Button.TitleBarBtn.CloseBtn:pointerover PathIcon">
+      <Setter Property="Foreground" Value="{StaticResource DangerPrimaryBrush}"/>
+    </Style>
+
+    <!-- ═══════════════════════════════════════════════
+         备忘录卡片 · 核心组件（Warm Liné 风格）
+         ─────────────────────────────────────────────────
+         · 默认：暖白面 + 暖色细边框
+         · 悬停：背景微提亮 + 边框颜色加深 + 装饰条 opacity 提升
+         · 按下：暖色激活底
+         · 编辑态：暖橙强调背景 + 强调边框 + 装饰条 opacity 拉满
+         ─────────────────────────────────────────────────
+         注意：
+         - 不使用 scale / translateY 变换，避免布局溢出被裁切。
+         - 不使用 BorderThickness 动画，边框粗细变化会导致内容重排跳动。
+         - 仅用颜色过渡(opacity / background / border-brush)实现丝滑反馈。
+         ═══════════════════════════════════════════════ -->
+    <Style Selector="Border.MemoCard">
+      <Setter Property="Background" Value="{StaticResource SurfacePrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="12"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+
+    <!-- 卡片悬停（非编辑态）：背景微提亮 + 暖色边框加深 + 装饰线提亮 -->
+    <Style Selector="Border.MemoCard:not(.editing):pointerover">
+      <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderEmphasisBrush}"/>
+    </Style>
+
+    <!-- 卡片按下：暖色激活底 + 边框进一步加深 -->
+    <Style Selector="Border.MemoCard:not(.editing):pressed">
+      <Setter Property="Background" Value="{StaticResource SurfaceActiveBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderHoverBrush}"/>
+    </Style>
+
+    <!-- 编辑态：暖橙强调背景 + 强调边框 + 装饰线拉满 -->
+    <Style Selector="Border.MemoCard.editing">
+      <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AccentMutedBrush}"/>
+    </Style>
+
+    <!-- 装饰线：悬停时微微提亮 -->
+    <Style Selector="Border.MemoCard:pointerover Border#_accentBar">
+      <Setter Property="Opacity" Value="0.75"/>
+    </Style>
+
+    <!-- 装饰线：编辑态时完全显示 + 颜色加深 -->
+    <Style Selector="Border.MemoCard.editing Border#_accentBar">
+      <Setter Property="Opacity" Value="1"/>
+      <Setter Property="Background" Value="{StaticResource AccentHoverBrush}"/>
+    </Style>
+
+    <!-- ═══════════════════════════════════════════════
+         卡片删除按钮 · 圆形微按钮
+         ─────────────────────────────────────────────────
+         · 默认隐藏（Opacity=0）
+         · 卡片悬停时淡入（200ms）
+         · 悬停：红色警示底 + 红色图标
+         · 按下：微缩小反馈
+         ═══════════════════════════════════════════════ -->
+    <Style Selector="Button.DeleteBtn">
+      <Setter Property="Background" Value="{StaticResource BgTertiaryBrush}"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="Width" Value="22"/>
+      <Setter Property="Height" Value="22"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="Opacity" Value="0"/>
+      <Setter Property="RenderTransformOrigin" Value="0.5%,0.5%"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.20" Easing="CubicEaseOut"/>
+          <BrushTransition Property="Background" Duration="0:0:0.15"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.DeleteBtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource DangerSubtleBrush}"/>
+    </Style>
+    <Style Selector="Button.DeleteBtn:pointerover PathIcon">
+      <Setter Property="Foreground" Value="{StaticResource DangerPrimaryBrush}"/>
+    </Style>
+    <Style Selector="Button.DeleteBtn:pressed">
+      <Setter Property="RenderTransform" Value="scale(0.92)"/>
+    </Style>
+
+    <!-- 卡片悬停 → 删除按钮淡入 -->
+    <Style Selector="Border.MemoCard:pointerover Button.DeleteBtn">
+      <Setter Property="Opacity" Value="1"/>
+    </Style>
+
+    <!-- ═══════════════════════════════════════════════
+         卡片左侧暖色装饰条
+         ─────────────────────────────────────────────────
+         编辑态时装饰条加粗 + 加深，强化"正在编辑"的感知
+         ═══════════════════════════════════════════════ -->
+    <Style Selector="Border.MemoCard.editing &gt; Grid &gt; Border:nth-child(1)">
+      <Setter Property="Opacity" Value="1"/>
+    </Style>
+
+    <!-- ═══════════════════════════════════════════════
+         输入框容器
+         - 默认：浅色边框 + 轻描边
+         - 聚焦：暖橙边框 + 暖橙装饰条加深（200ms 过渡）
+         ═══════════════════════════════════════════════ -->
+    <Style Selector="Border.InputRoot">
+      <Setter Property="Background" Value="{StaticResource SurfacePrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="12"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.20"/>
+        </Transitions>
+      </Setter>
+    </Style>
+
+    <Style Selector="Border.InputRoot:focus-within">
+      <Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/>
+      <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}"/>
+    </Style>
+
+    <!-- ═══════════════════════════════════════════════
+         内部输入框（TextBox）
+         - 完全移除聚焦时的蓝色边框
+         - 聚焦态由外层 InputRoot Border 的 :focus-within 负责
+         ═══════════════════════════════════════════════ -->
+    <Style Selector="TextBox.InputBox">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="CaretBrush" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="VerticalContentAlignment" Value="Top"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Foreground" Duration="0:0:0.15"/>
+        </Transitions>
+      </Setter>
+    </Style>
+
+    <!-- 核心修复：覆盖 FluentTheme 为 TextBox 聚焦时渲染的蓝色边框 -->
+    <Style Selector="TextBox.InputBox:focus /template/ Border#PART_BorderElement">
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="TextBox.InputBox:focus-within /template/ Border#PART_BorderElement">
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="TextBox.InputBox:pointerover /template/ Border#PART_BorderElement">
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+
+    <!-- ═══════════════════════════════════════════════
+         空列表占位文字
+         ═══════════════════════════════════════════════ -->
+    <Style Selector="TextBlock.EmptyHintTitle">
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="HorizontalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="TextBlock.EmptyHintSubtitle">
+      <Setter Property="Foreground" Value="{StaticResource TextTertiaryBrush}"/>
+      <Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="HorizontalAlignment" Value="Center"/>
+      <Setter Property="TextAlignment" Value="Center"/>
+      <Setter Property="LineHeight" Value="18"/>
+    </Style>
+
+    <!-- ═══════════════════════════════════════════════
+         列表计数徽章
+         ═══════════════════════════════════════════════ -->
+    <Style Selector="Border.CountBadge">
+      <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="MinWidth" Value="18"/>
+      <Setter Property="Height" Value="18"/>
+      <Setter Property="Padding" Value="6,0"/>
+      <Setter Property="HorizontalAlignment" Value="Center"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="TextBlock.CountBadgeText">
+      <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="LineHeight" Value="18"/>
+      <Setter Property="TextAlignment" Value="Center"/>
+      <Setter Property="HorizontalAlignment" Value="Center"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- ═══════════════════════════════════════════════
+         空状态卡片
+         ═══════════════════════════════════════════════ -->
+    <Style Selector="Border.EmptyStateCard">
+      <Setter Property="Background" Value="{StaticResource SurfacePrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="16"/>
+      <Setter Property="Padding" Value="32,28"/>
+    </Style>
+
+  </Application.Styles>
+</Application>

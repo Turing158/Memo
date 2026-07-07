@@ -1,0 +1,267 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:note_avalonia.ViewModels"
+        xmlns:converters="using:note_avalonia"
+        xmlns:models="using:note_avalonia.Models"
+        mc:Ignorable="d"
+        d:DesignWidth="420" d:DesignHeight="680"
+        x:DataType="vm:MainViewModel"
+        x:Class="note_avalonia.MainWindow"
+        Title="备忘录"
+        Icon="/Assets/appicon.ico"
+        Width="420" Height="680"
+        MinWidth="360" MinHeight="480"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen"
+        SystemDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent">
+
+  <Window.DataContext>
+    <vm:MainViewModel />
+  </Window.DataContext>
+
+  <!--
+    最外层圆角容器 — 统一窗口四角的圆角外观。
+    Avalonia 11.1 原生窗口在 SystemDecorations=None 下不支持圆角窗口，
+    用一个带圆角 + 边框的 Border 模拟整个窗口的视觉外壳。
+  -->
+  <Border x:Name="_windowShell"
+          Background="{StaticResource BgPrimaryBrush}"
+          BorderBrush="{StaticResource BorderSubtleBrush}"
+          BorderThickness="1"
+          CornerRadius="14"
+          RenderTransformOrigin="0.5%,0.5%">
+    <Border.RenderTransform>
+      <ScaleTransform ScaleX="1" ScaleY="1"/>
+    </Border.RenderTransform>
+
+    <Grid RowDefinitions="49,*">
+
+      <!-- ═══════════════════════════════════════════════
+           自定义标题栏（顶部左右圆角）
+           ═══════════════════════════════════════════════ -->
+      <Border Grid.Row="0"
+              Background="{StaticResource SurfacePrimaryBrush}"
+              BorderBrush="{StaticResource BorderSubtleBrush}"
+              BorderThickness="0,0,0,1"
+              CornerRadius="14,14,0,0">
+        <Grid ColumnDefinitions="Auto,*,Auto" Margin="14,0">
+          <!-- 左：Logo + 应用名 + 计数徽章 -->
+          <StackPanel Grid.Column="0"
+                      Orientation="Horizontal"
+                      VerticalAlignment="Center"
+                      Spacing="10">
+            <Image Source="/Assets/appicon.png" Width="22" Height="22"/>
+            <TextBlock Text="备忘录"
+                       VerticalAlignment="Center"
+                       FontWeight="SemiBold"
+                       FontSize="13.5"
+                       LetterSpacing="0.2"
+                       Foreground="{StaticResource TextPrimaryBrush}"/>
+            <!-- 列表计数徽章 -->
+            <Border Classes="CountBadge"
+                    CornerRadius="9"
+                    IsVisible="{Binding Memos.Count, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <TextBlock Classes="CountBadgeText"
+                         Text="{Binding Memos.Count, StringFormat='{}{0}'}"/>
+            </Border>
+          </StackPanel>
+
+          <!-- 中：拖拽区域 -->
+          <Border Grid.Column="1"
+                  x:Name="_titleBarDrag"
+                  Background="Transparent"
+                  PointerPressed="_titleBarDrag_PointerPressed"/>
+
+          <!-- 右：操作按钮 -->
+          <StackPanel Grid.Column="2"
+                      Orientation="Horizontal"
+                      VerticalAlignment="Center"
+                      Spacing="3">
+            <Button Classes="TitleBarBtn" CornerRadius="8" Click="OnSettingsClick" ToolTip.Tip="设置">
+              <PathIcon Data="{StaticResource SettingsIcon}" Width="17" Height="17" Foreground="{StaticResource IconDefaultBrush}"/>
+            </Button>
+            <Button Classes="TitleBarBtn" CornerRadius="8" Click="OnPinToggle" x:Name="_pinButton" ToolTip.Tip="置顶">
+              <PathIcon Data="{StaticResource PinIcon}" Width="16" Height="16" Foreground="{StaticResource IconDefaultBrush}">
+                <PathIcon.RenderTransform>
+                  <RotateTransform Angle="0"/>
+                </PathIcon.RenderTransform>
+              </PathIcon>
+            </Button>
+            <Button Classes="TitleBarBtn" CornerRadius="8" Click="OnMinimizeClick" ToolTip.Tip="最小化">
+              <PathIcon Data="{StaticResource MinimizeIcon}" Width="15" Height="15" Foreground="{StaticResource IconDefaultBrush}"/>
+            </Button>
+            <Button Classes="TitleBarBtn CloseBtn" CornerRadius="8" Click="OnCloseClick" ToolTip.Tip="关闭">
+              <PathIcon Data="{StaticResource CloseIcon}" Width="16" Height="16" Foreground="{StaticResource IconDefaultBrush}"/>
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- ═══════════════════════════════════════════════
+           内容区（底部左右圆角）
+           ═══════════════════════════════════════════════ -->
+      <Border Grid.Row="1"
+              Background="{StaticResource BgPrimaryBrush}"
+              CornerRadius="0,0,14,14">
+        <Grid RowDefinitions="Auto,*" Margin="16,14,16,18">
+
+          <!-- ── 顶部输入框 ── -->
+          <Border Grid.Row="0"
+                  x:Name="_inputRoot"
+                  Classes="InputRoot"
+                  CornerRadius="12"
+                  Padding="16,13"
+                  Margin="0,0,0,16">
+            <Grid ColumnDefinitions="Auto,*">
+              <!-- 左侧装饰条 -->
+              <Border Grid.Column="0"
+                      Width="3" MinHeight="18"
+                      CornerRadius="2"
+                      Background="{StaticResource AccentPrimaryBrush}"
+                      Opacity="0.7"
+                      VerticalAlignment="Stretch"/>
+              <!-- 输入本体 -->
+              <TextBox Grid.Column="1"
+                       Margin="12,0,0,0"
+                       x:Name="_inputBox"
+                       Classes="InputBox"
+                       MinHeight="20" MaxHeight="80"
+                       TextWrapping="Wrap"
+                       AcceptsReturn="False"
+                       MaxLines="4"
+                       Watermark="记点什么，按 Enter 保存，Shift+Enter 换行..."
+                       LetterSpacing="0.1"/>
+            </Grid>
+          </Border>
+
+          <!-- ── 备忘录列表 / 空状态 ── -->
+          <Grid Grid.Row="1">
+            <!-- 空状态 -->
+            <Border Classes="EmptyStateCard"
+                    CornerRadius="16"
+                    IsVisible="{Binding Memos.Count, Converter={x:Static converters:MainWindowConverters.IsZero}}"
+                    VerticalAlignment="Top"
+                    Margin="20,40"
+                    HorizontalAlignment="Center">
+              <StackPanel HorizontalAlignment="Center" Spacing="12">
+                <!-- 装饰图标区域 -->
+                <Border Width="48" Height="48"
+                        CornerRadius="14"
+                        Background="{StaticResource AccentSubtleBrush}"
+                        HorizontalAlignment="Center">
+                  <PathIcon Data="{StaticResource ChevronDownIcon}"
+                           Width="24" Height="24"
+                           Foreground="{StaticResource AccentMutedBrush}"/>
+                </Border>
+                <TextBlock Text="还没有备忘录"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimaryBrush}"
+                           HorizontalAlignment="Center"/>
+                <TextBlock Text="在上方输入框写下第一条&#x0a;按 Enter 保存"
+                           FontSize="12.5"
+                           Foreground="{StaticResource TextTertiaryBrush}"
+                           TextAlignment="Center"
+                           LineHeight="18"/>
+              </StackPanel>
+            </Border>
+
+            <!-- 列表 -->
+            <ScrollViewer x:Name="_scrollViewer"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          IsVisible="{Binding Memos.Count, Converter={x:Static converters:MainWindowConverters.IsGreaterThanZero}}">
+              <ItemsControl x:Name="_memoList" ItemsSource="{Binding Memos}"
+                              Margin="0,0,6,0">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="models:MemoItem">
+                    <Border Classes="MemoCard"
+                            CornerRadius="12"
+                            Margin="0,0,0,10"
+                            Padding="0">
+                      <Grid ColumnDefinitions="3,*,Auto">
+                        <!-- 左侧精致装饰线：纵向贯穿风格
+                             - 3px 宽，纵向贯穿卡片高度
+                             - 上下对称留白 10px，与卡片内部 padding 协调
+                             - 圆角 2px，柔和过渡
+                             - opacity 默认 0.5，悬停/编辑时由样式拉满 -->
+                        <Border Grid.Column="0"
+                                x:Name="_accentBar"
+                                Background="{StaticResource AccentPrimaryBrush}"
+                                CornerRadius="2"
+                                Width="3"
+                                VerticalAlignment="Stretch"
+                                Margin="0,10,0,10"
+                                Opacity="0.5"/>
+
+                        <!-- 内容区 -->
+                        <Grid Grid.Column="1" RowDefinitions="Auto,Auto" Margin="13,14,8,14">
+                          <!-- 标题行：标题 + 删除按钮并排 -->
+                          <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding Title}"
+                                       FontWeight="SemiBold"
+                                       FontSize="14"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       LineHeight="20"
+                                       Margin="0,0,8,0"/>
+                            <!-- 删除按钮：右上角 -->
+                            <Button Grid.Column="1"
+                                    Classes="DeleteBtn"
+                                    CornerRadius="10"
+                                    Click="OnDeleteClick"
+                                    CommandParameter="{Binding}">
+                              <PathIcon Data="{StaticResource DeleteXIcon}"
+                                       Width="12" Height="12"
+                                       Foreground="{StaticResource IconDefaultBrush}"/>
+                            </Button>
+                          </Grid>
+
+                          <!-- 副标题 + 时间 -->
+                          <Grid Grid.Row="1"
+                                ColumnDefinitions="*,Auto"
+                                Margin="0,5,0,0">
+                            <TextBlock Grid.Column="0"
+                                       IsVisible="{Binding Subtitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Text="{Binding Subtitle}"
+                                       FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center"
+                                       LineHeight="17"
+                                       LetterSpacing="0.1"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding RelativeTime}"
+                                       FontSize="10.5"
+                                       Foreground="{StaticResource TextTertiaryBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="10,0,0,0"
+                                       LetterSpacing="0.3"/>
+                          </Grid>
+                        </Grid>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+
+            <!-- 拖拽悬浮层 + 占位框覆盖层（仅拖拽时填充子项）
+                 IsHitTestVisible=False 保证鼠标事件穿透到下方列表
+                 ClipToBounds=True 保证占位框不会溢出列表区域 -->
+            <Canvas x:Name="_dragFloatingLayer"
+                    IsHitTestVisible="False"
+                    ClipToBounds="True"
+                    Panel.ZIndex="100"/>
+          </Grid>
+        </Grid>
+      </Border>
+
+    </Grid>
+  </Border>
+</Window>

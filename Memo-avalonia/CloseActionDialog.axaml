@@ -1,0 +1,79 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="note_avalonia.CloseActionDialog"
+        Width="330" Height="230"
+        WindowStartupLocation="CenterOwner"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent">
+  <Window.Styles>
+    <Style Selector="ToggleButton.CloseActionOption">
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="Padding" Value="14,0"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="ToggleButton.CloseActionOption /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="ToggleButton.CloseActionOption:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource BgHoverBrush}"/>
+    </Style>
+    <Style Selector="ToggleButton.CloseActionOption:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+    <Style Selector="ToggleButton.CloseActionOption:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}"/>
+    </Style>
+    <Style Selector="ToggleButton.CloseActionOption:checked">
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+  </Window.Styles>
+
+  <Border x:Name="_dialogShell"
+          Background="{StaticResource SurfacePrimaryBrush}"
+          BorderBrush="{StaticResource BorderEmphasisBrush}"
+          BorderThickness="1"
+          CornerRadius="14"
+          Padding="18"
+          RenderTransformOrigin="0.5%,0.5%">
+    <Border.RenderTransform>
+      <ScaleTransform ScaleX="1" ScaleY="1"/>
+    </Border.RenderTransform>
+    <Grid RowDefinitions="*,Auto">
+      <StackPanel Spacing="12">
+        <StackPanel Spacing="8">
+          <TextBlock Text="关闭按钮操作" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+          <TextBlock Text="点击右上角关闭按钮时，要最小化到托盘还是直接关闭应用？" FontSize="12.5" LineHeight="18" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"/>
+        </StackPanel>
+        <Border Background="{StaticResource BgSecondaryBrush}"
+                BorderBrush="{StaticResource BorderDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="11"
+                Padding="3">
+          <Grid ColumnDefinitions="*,*">
+            <ToggleButton Grid.Column="0" x:Name="_minimizeToTrayOption" Classes="CloseActionOption" Content="最小化托盘" Click="OnMinimizeToTrayOptionClick"/>
+            <ToggleButton Grid.Column="1" x:Name="_closeAppOption" Classes="CloseActionOption" Content="关闭" Click="OnCloseAppOptionClick"/>
+          </Grid>
+        </Border>
+      </StackPanel>
+      <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Content="取消" Height="32" Padding="14,0" CornerRadius="8" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnCancelClick"/>
+        <Button Content="确认" Height="32" Padding="14,0" CornerRadius="8" Background="{StaticResource AccentPrimaryBrush}" Foreground="White" BorderThickness="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnConfirmClick"/>
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>

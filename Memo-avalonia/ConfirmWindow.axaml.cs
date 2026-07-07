@@ -1,0 +1,36 @@
+using Avalonia.Controls;
+using Avalonia.Interactivity;
+
+namespace note_avalonia;
+
+public partial class ConfirmWindow : Window{
+    private WindowTransitionController? _transition;
+    private bool _isClosingAfterTransition;
+
+    public ConfirmWindow() {
+        InitializeComponent();
+        _transition = new WindowTransitionController(this, this.FindControl<Border>("_confirmShell")!);
+        _transition.PrepareOpen();
+        Opened += (_, _) => _transition.PlayOpen();
+    }
+
+    public ConfirmWindow(string title, string message)
+        : this() {
+        this.FindControl<TextBlock>("_titleText")!.Text = title;
+        this.FindControl<TextBlock>("_messageText")!.Text = message;
+    }
+
+    private void OnConfirmClick(object? sender, RoutedEventArgs e) => CloseWithTransition(true);
+
+    private void OnCancelClick(object? sender, RoutedEventArgs e) => CloseWithTransition(false);
+
+    private void CloseWithTransition(bool result) {
+        if (_isClosingAfterTransition) return;
+        _isClosingAfterTransition = true;
+        if (_transition == null) {
+            Close(result);
+            return;
+        }
+        _transition.CloseAfterTransition(() => Close(result));
+    }
+}

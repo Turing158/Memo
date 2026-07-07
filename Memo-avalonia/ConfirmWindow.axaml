@@ -1,0 +1,31 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="note_avalonia.ConfirmWindow"
+        Width="300" Height="164"
+        WindowStartupLocation="CenterOwner"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent">
+  <Border x:Name="_confirmShell"
+          Background="{StaticResource SurfacePrimaryBrush}"
+          BorderBrush="{StaticResource BorderEmphasisBrush}"
+          BorderThickness="1"
+          CornerRadius="14"
+          Padding="18"
+          RenderTransformOrigin="0.5%,0.5%">
+    <Border.RenderTransform>
+      <ScaleTransform ScaleX="1" ScaleY="1"/>
+    </Border.RenderTransform>
+    <Grid RowDefinitions="*,Auto">
+      <StackPanel Spacing="8">
+        <TextBlock x:Name="_titleText" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+        <TextBlock x:Name="_messageText" FontSize="12.5" LineHeight="18" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"/>
+      </StackPanel>
+      <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Content="取消" Height="32" Padding="14,0" CornerRadius="8" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnCancelClick"/>
+        <Button Content="确定" Height="32" Padding="14,0" CornerRadius="8" Background="{StaticResource DangerPrimaryBrush}" Foreground="White" BorderThickness="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnConfirmClick"/>
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>

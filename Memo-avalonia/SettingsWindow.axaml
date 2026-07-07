@@ -1,0 +1,203 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="note_avalonia.SettingsWindow"
+        Title="设置"
+        Icon="/Assets/appicon.ico"
+        Width="380" Height="430"
+        MinWidth="360" MinHeight="400"
+        WindowStartupLocation="CenterOwner"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent">
+
+  <Window.Styles>
+    <Style Selector="Button.SettingsIconBtn">
+      <Setter Property="Width" Value="32"/>
+      <Setter Property="Height" Value="32"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.SettingsIconBtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource BgHoverBrush}"/>
+    </Style>
+    <Style Selector="Border.SettingsCard">
+      <Setter Property="Background" Value="{StaticResource SurfacePrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="12"/>
+      <Setter Property="Padding" Value="14"/>
+    </Style>
+    <Style Selector="ToggleButton.CloseActionOption">
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="Padding" Value="14,0"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="ToggleButton.CloseActionOption /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="ToggleButton.CloseActionOption:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource BgHoverBrush}"/>
+    </Style>
+    <Style Selector="ToggleButton.CloseActionOption:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+    <Style Selector="ToggleButton.CloseActionOption:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}"/>
+    </Style>
+    <Style Selector="ToggleButton.CloseActionOption:checked">
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="Button.HotkeyCaptureBtn">
+      <Setter Property="MinWidth" Value="126"/>
+      <Setter Property="Height" Value="32"/>
+      <Setter Property="Padding" Value="10,0"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Background" Value="{StaticResource BgSecondaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.HotkeyCaptureBtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource BgHoverBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderHoverBrush}"/>
+    </Style>
+    <Style Selector="Button.ResetBtn">
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="Padding" Value="14,0"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="Background" Value="{StaticResource DangerSubtleBrush}"/>
+      <Setter Property="Foreground" Value="{StaticResource DangerPrimaryBrush}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.SecondaryBtn">
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="Padding" Value="16,0"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="Background" Value="{StaticResource BgSecondaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.PrimaryBtn">
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="Padding" Value="16,0"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+  </Window.Styles>
+
+  <Border x:Name="_settingsShell"
+          Background="{StaticResource BgPrimaryBrush}"
+          BorderBrush="{StaticResource BorderSubtleBrush}"
+          BorderThickness="1"
+          CornerRadius="14"
+          RenderTransformOrigin="0.5%,0.5%">
+    <Border.RenderTransform>
+      <ScaleTransform ScaleX="1" ScaleY="1"/>
+    </Border.RenderTransform>
+    <Grid RowDefinitions="48,*,Auto">
+      <Border Grid.Row="0"
+              Background="{StaticResource SurfacePrimaryBrush}"
+              BorderBrush="{StaticResource BorderSubtleBrush}"
+              BorderThickness="0,0,0,1"
+              CornerRadius="14,14,0,0">
+        <Grid ColumnDefinitions="*,Auto" Margin="16,0,10,0">
+          <Border Background="Transparent" PointerPressed="OnTitleBarPointerPressed">
+            <TextBlock Text="设置" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+          </Border>
+          <Button Grid.Column="1" Classes="SettingsIconBtn" Click="OnCloseClick">
+            <PathIcon Data="{StaticResource CloseIcon}" Width="15" Height="15" Foreground="{StaticResource IconDefaultBrush}"/>
+          </Button>
+        </Grid>
+      </Border>
+
+      <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="16" Spacing="12">
+          <Border Classes="SettingsCard">
+            <StackPanel Spacing="10">
+              <TextBlock Text="关闭按钮操作" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+              <Border Background="{StaticResource BgSecondaryBrush}"
+                      BorderBrush="{StaticResource BorderDefaultBrush}"
+                      BorderThickness="1"
+                      CornerRadius="11"
+                      Padding="3">
+                <Grid ColumnDefinitions="*,*">
+                  <ToggleButton Grid.Column="0" x:Name="_minimizeToTrayOption" Classes="CloseActionOption" Content="最小化托盘" Click="OnMinimizeToTrayOptionClick"/>
+                  <ToggleButton Grid.Column="1" x:Name="_closeAppOption" Classes="CloseActionOption" Content="关闭" Click="OnCloseAppOptionClick"/>
+                </Grid>
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <Border Classes="SettingsCard">
+            <StackPanel Spacing="12">
+              <StackPanel Spacing="2">
+                <TextBlock Text="快捷键设置" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                <TextBlock Text="点击后按快捷键，按 Esc 留空" FontSize="11.5" Foreground="{StaticResource TextTertiaryBrush}"/>
+              </StackPanel>
+
+              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                <TextBlock Grid.Row="0" Text="置顶" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"/>
+                <Button Grid.Row="0" Grid.Column="1" x:Name="_toggleTopmostHotkeyButton" Classes="HotkeyCaptureBtn" Click="OnToggleTopmostHotkeyClick"/>
+
+                <TextBlock Grid.Row="1" Text="最小化" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0"/>
+                <Button Grid.Row="1" Grid.Column="1" x:Name="_minimizeHotkeyButton" Classes="HotkeyCaptureBtn" Click="OnMinimizeHotkeyClick" Margin="0,8,0,0"/>
+
+                <TextBlock Grid.Row="2" Text="显示软件" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0"/>
+                <Button Grid.Row="2" Grid.Column="1" x:Name="_showWindowHotkeyButton" Classes="HotkeyCaptureBtn" Click="OnShowWindowHotkeyClick" Margin="0,8,0,0"/>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <Border Classes="SettingsCard">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="2" VerticalAlignment="Center">
+                <TextBlock Text="重置设置" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                <TextBlock Text="恢复关闭行为和快捷键默认值" FontSize="11.5" Foreground="{StaticResource TextTertiaryBrush}"/>
+              </StackPanel>
+              <Button Grid.Column="1" Classes="ResetBtn" Content="重置" Click="OnResetClick"/>
+            </Grid>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+
+      <Border Grid.Row="2" Background="{StaticResource SurfacePrimaryBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,1,0,0" CornerRadius="0,0,14,14" Padding="16,12">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+          <Button Classes="SecondaryBtn" Content="取消" Click="OnCloseClick"/>
+          <Button Classes="PrimaryBtn" Content="保存" Click="OnSaveClick"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Border>
+</Window>

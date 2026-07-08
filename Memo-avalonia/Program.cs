@@ -1,7 +1,7 @@
 using Avalonia;
 using System;
 
-namespace note_avalonia;
+namespace Memo;
 
 class Program {
     [STAThread]

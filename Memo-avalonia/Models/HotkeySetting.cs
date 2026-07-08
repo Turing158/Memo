@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
-namespace note_avalonia.Models;
+namespace Memo.Models;
 
 public class HotkeySetting {
     public string Key { get; set; } = string.Empty;

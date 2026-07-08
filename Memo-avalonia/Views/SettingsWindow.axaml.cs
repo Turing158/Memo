@@ -2,11 +2,13 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using note_avalonia.Models;
+using Memo.Components.Dialogs;
+using Memo.Models;
+using Memo.UI;
 using System;
 using System.Threading.Tasks;
 
-namespace note_avalonia;
+namespace Memo.Views;
 
 public partial class SettingsWindow : Window {
     private AppSettings _settings = AppSettings.CreateDefault();
@@ -151,7 +153,7 @@ public partial class SettingsWindow : Window {
     }
 
     private async void OnResetClick(object? sender, RoutedEventArgs e) {
-        var confirm = new ConfirmWindow("重置设置", "确定要恢复默认设置吗？");
+        var confirm = new ConfirmDialog("重置设置", "确定要恢复默认设置吗？");
         var result = await confirm.ShowDialog<bool>(this);
         if (!result) return;
 

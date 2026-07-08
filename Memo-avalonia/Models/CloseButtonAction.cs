@@ -1,4 +1,4 @@
-namespace note_avalonia.Models;
+namespace Memo.Models;
 
 public enum CloseButtonAction {
     MinimizeToTray,

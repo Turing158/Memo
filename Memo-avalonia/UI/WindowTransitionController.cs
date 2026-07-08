@@ -6,7 +6,7 @@ using Avalonia.Threading;
 using System;
 using System.Diagnostics;
 
-namespace note_avalonia;
+namespace Memo.UI;
 
 internal sealed class WindowTransitionController {
     private readonly Window _window;

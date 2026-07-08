@@ -1,10 +1,11 @@
-using note_avalonia.Models;
+using Memo.Models;
+using Memo.Views;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace note_avalonia.Services;
+namespace Memo.Platform.Windows;
 
 public sealed class GlobalHotkeyService : IDisposable {
     private const int WmHotkey = 0x0312;

@@ -2,7 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Linq;
 
-namespace note_avalonia.Models;
+namespace Memo.Models;
 
 /// <summary>
 /// 单条备忘录模型。Title / Subtitle 由 Content 自动派生（首行=标题，第二行起=副标题）。

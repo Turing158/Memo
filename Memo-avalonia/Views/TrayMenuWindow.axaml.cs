@@ -5,7 +5,7 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using System;
 
-namespace note_avalonia;
+namespace Memo.Views;
 
 public partial class TrayMenuWindow : Window {
     private MainWindow? _mainWindow;

@@ -45,19 +45,19 @@ dotnet run
 也可以直接指定项目文件运行：
 
 ```bash
-dotnet run --project Memo-avalonia/note-avalonia.csproj
+dotnet run --project Memo-avalonia/Memo.csproj
 ```
 
 ## 构建
 
 ```bash
-dotnet build Memo-avalonia/note-avalonia.csproj
+dotnet build Memo-avalonia/Memo.csproj
 ```
 
 发布 Release 版本示例：
 
 ```bash
-dotnet publish Memo-avalonia/note-avalonia.csproj -c Release -r win-x64 --self-contained false
+dotnet publish Memo-avalonia/Memo.csproj -c Release -r win-x64 --self-contained false
 ```
 
 发布产物默认位于：
@@ -68,10 +68,10 @@ Memo-avalonia/bin/Release/net8.0-windows/win-x64/publish/
 
 ## 数据存储
 
-应用会在用户 AppData 目录下创建 `note_avalonia` 文件夹：
+应用会在用户 AppData 目录下创建 `Memo` 文件夹：
 
 ```text
-%AppData%/note_avalonia/
+%AppData%/Memo/
 ```
 
 主要文件：
@@ -95,19 +95,18 @@ Memo-avalonia/bin/Release/net8.0-windows/win-x64/publish/
 
 ```text
 Memo-avalonia/
+├── Memo.csproj                       # Avalonia 桌面应用项目文件
 ├── App.axaml / App.axaml.cs          # 应用入口、托盘、设置加载和全局快捷键初始化
 ├── Program.cs                        # Avalonia 启动配置
-├── MainWindow.axaml / .cs            # 主窗口、备忘录输入、列表交互和窗口按钮逻辑
-├── SettingsWindow.axaml / .cs        # 设置窗口
-├── TrayMenuWindow.axaml / .cs        # 托盘菜单窗口
-├── CloseActionDialog.axaml / .cs     # 首次关闭行为选择弹窗
-├── Behaviors/
-│   └── DragReorderManager.cs         # 长按拖拽重排逻辑
+├── Views/                            # 主窗口、设置窗口和托盘菜单窗口
+├── Components/Dialogs/               # 关闭行为选择、确认等弹窗组件
+├── ViewModels/                       # 主窗口状态和备忘录集合管理
 ├── Models/                           # 备忘录、设置和快捷键模型
-├── Services/                         # JSON 存储和全局快捷键服务
-├── Assets/                           # 应用图标资源
-├── design-system/                    # 窗口按钮等 SVG 设计资源
-└── docs/                             # 交互设计和开发说明
+├── Services/                         # JSON 本地存储服务
+├── Platform/Windows/                 # Windows 托盘和全局快捷键实现
+├── Behaviors/                        # 长按拖拽重排等交互行为
+├── UI/                               # 通用 UI 动画/辅助控制器
+└── Assets/                           # 应用图标资源
 ```
 
 ## 使用说明

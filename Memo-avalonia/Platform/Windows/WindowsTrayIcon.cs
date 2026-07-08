@@ -2,7 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace note_avalonia;
+namespace Memo.Platform.Windows;
 
 internal sealed class WindowsTrayIcon : IDisposable {
     private readonly NotifyIcon _notifyIcon;

@@ -15,14 +15,14 @@ using Avalonia.Media;
 using Avalonia.Media.Transformation;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using note_avalonia.Models;
-using note_avalonia.ViewModels;
+using Memo.Models;
+using Memo.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
-namespace note_avalonia.Behaviors;
+namespace Memo.Behaviors;
 
 /// <summary>
 /// 长按拖拽重排管理器。

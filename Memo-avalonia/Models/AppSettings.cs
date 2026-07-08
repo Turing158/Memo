@@ -1,4 +1,4 @@
-namespace note_avalonia.Models;
+namespace Memo.Models;
 
 public class AppSettings {
     public CloseButtonAction CloseButtonAction { get; set; } = CloseButtonAction.MinimizeToTray;

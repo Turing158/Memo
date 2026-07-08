@@ -1,4 +1,4 @@
-using note_avalonia.Models;
+using Memo.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -7,10 +7,10 @@ using System.Threading;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-namespace note_avalonia.Services;
+namespace Memo.Services;
 
 /// <summary>
-/// JSON 文件持久化：%AppData%\note_avalonia\memos.json。
+/// JSON 文件持久化：%AppData%\Memo\memos.json。
 /// 每次增/改/删/移后异步保存，失败时静默吞错并记录。
 /// </summary>
 public class JsonMemoStorage {
@@ -20,7 +20,7 @@ public class JsonMemoStorage {
 
     public JsonMemoStorage() {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var dir = Path.Combine(appData, "note_avalonia");
+        var dir = Path.Combine(appData, "Memo");
         Directory.CreateDirectory(dir);
         _filePath = Path.Combine(dir, "memos.json");
     }

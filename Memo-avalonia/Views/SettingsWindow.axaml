@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="note_avalonia.SettingsWindow"
+        x:Class="Memo.Views.SettingsWindow"
         Title="设置"
         Icon="/Assets/appicon.ico"
         Width="380" Height="430"

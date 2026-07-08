@@ -10,9 +10,9 @@ using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using note_avalonia.Behaviors;
-using note_avalonia.Models;
-using note_avalonia.ViewModels;
+using Memo.Behaviors;
+using Memo.Models;
+using Memo.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -20,7 +20,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace note_avalonia;
+namespace Memo.Views;
 
 /// <summary>
 ///  MainWindow 使用的 IValueConverter 集合。
@@ -29,7 +29,7 @@ public static class MainWindowConverters {
     /// <summary>整数 == 0 → true（用于空状态可见性）。</summary>
     public static readonly IValueConverter IsZero = new FuncConverter<int>(v => v == 0);
 
-    /// <summary>整数 &gt; 0 → true（用于列表可见性）。</summary>
+    /// <summary>整数 > 0 → true（用于列表可见性）。</summary>
     public static readonly IValueConverter IsGreaterThanZero = new FuncConverter<int>(v => v > 0);
 
     private sealed class FuncConverter<T> : IValueConverter {

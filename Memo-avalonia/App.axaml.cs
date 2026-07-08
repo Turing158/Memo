@@ -3,11 +3,14 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
-using note_avalonia.Models;
-using note_avalonia.Services;
+using Memo.Components.Dialogs;
+using Memo.Models;
+using Memo.Platform.Windows;
+using Memo.Services;
+using Memo.Views;
 using System.Threading.Tasks;
 
-namespace note_avalonia;
+namespace Memo;
 
 public partial class App : Application{
     private WindowsTrayIcon? _trayIcon;

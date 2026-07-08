@@ -1,20 +1,22 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace note_avalonia;
+using Memo.UI;
 
-public partial class ConfirmWindow : Window{
+namespace Memo.Components.Dialogs;
+
+public partial class ConfirmDialog : Window{
     private WindowTransitionController? _transition;
     private bool _isClosingAfterTransition;
 
-    public ConfirmWindow() {
+    public ConfirmDialog() {
         InitializeComponent();
         _transition = new WindowTransitionController(this, this.FindControl<Border>("_confirmShell")!);
         _transition.PrepareOpen();
         Opened += (_, _) => _transition.PlayOpen();
     }
 
-    public ConfirmWindow(string title, string message)
+    public ConfirmDialog(string title, string message)
         : this() {
         this.FindControl<TextBlock>("_titleText")!.Text = title;
         this.FindControl<TextBlock>("_messageText")!.Text = message;

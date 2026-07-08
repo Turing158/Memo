@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="note_avalonia.TrayMenuWindow"
+        x:Class="Memo.Views.TrayMenuWindow"
         Width="138" Height="160"
         SystemDecorations="None"
         ShowInTaskbar="False"

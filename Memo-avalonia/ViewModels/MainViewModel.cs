@@ -1,11 +1,11 @@
-using note_avalonia.Models;
-using note_avalonia.Services;
+using Memo.Models;
+using Memo.Services;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace note_avalonia.ViewModels;
+namespace Memo.ViewModels;
 
 /// <summary>
 /// 持有备忘录集合、编辑态 ID 以及持久化服务。

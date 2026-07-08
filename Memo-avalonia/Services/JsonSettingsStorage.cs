@@ -1,11 +1,11 @@
-using note_avalonia.Models;
+using Memo.Models;
 using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace note_avalonia.Services;
+namespace Memo.Services;
 
 public class JsonSettingsStorage {
     private readonly string _filePath;
@@ -14,7 +14,7 @@ public class JsonSettingsStorage {
 
     public JsonSettingsStorage() {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var dir = Path.Combine(appData, "note_avalonia");
+        var dir = Path.Combine(appData, "Memo");
         Directory.CreateDirectory(dir);
         _filePath = Path.Combine(dir, "settings.json");
     }

@@ -1,9 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
-using note_avalonia.Models;
+using Memo.Models;
+using Memo.UI;
 
-namespace note_avalonia;
+namespace Memo.Components.Dialogs;
 
 public partial class CloseActionDialog : Window{
     private WindowTransitionController? _transition;

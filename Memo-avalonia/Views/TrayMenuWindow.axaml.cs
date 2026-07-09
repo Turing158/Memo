@@ -2,8 +2,11 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Platform;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using System;
+using System.Runtime.InteropServices;
 
 namespace Memo.Views;
 
@@ -40,6 +43,8 @@ public partial class TrayMenuWindow : Window {
         Topmost = true;
         Show();
         Activate();
+        BringAboveTrayFlyout();
+        Dispatcher.UIThread.Post(BringAboveTrayFlyout, DispatcherPriority.Render);
     }
 
     private void PositionNearTray(Window owner) {
@@ -104,4 +109,31 @@ public partial class TrayMenuWindow : Window {
             ? value as IBrush
             : null;
     }
+
+    private void BringAboveTrayFlyout() {
+        Topmost = false;
+        Topmost = true;
+
+        var handle = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+        if (handle == IntPtr.Zero) return;
+
+        SetWindowPos(handle, HwndTopmost, 0, 0, 0, 0,
+            SwpNoMove | SwpNoSize | SwpNoActivate | SwpShowWindow);
+    }
+
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpShowWindow = 0x0040;
+    private static readonly IntPtr HwndTopmost = new(-1);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        uint uFlags);
 }

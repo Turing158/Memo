@@ -48,6 +48,7 @@ public sealed class DragReorderManager {
     private readonly ScrollViewer _scroller;
     private readonly Canvas _layer;
     private readonly MainViewModel _vm;
+    private readonly Action<MemoItem, PixelPoint>? _requestPopout;
 
     // ── 拖拽状态 ──
     private bool _isDragging;
@@ -57,6 +58,8 @@ public sealed class DragReorderManager {
     private int _insertIndex;
     private Point _grabOffset;
     private Point _downPos;
+    private IPointer? _pressedPointer;
+    private IPointer? _capturedPointer;
 
     // ── 卡片尺寸（拖拽开始时测量，用于占位框和让位动画） ──
     private double _cardContentHeight;
@@ -75,11 +78,12 @@ public sealed class DragReorderManager {
     private readonly DispatcherTimer _longPressTimer;
     private readonly DispatcherTimer _scrollTimer;
 
-    public DragReorderManager(ItemsControl items, ScrollViewer scroller, Canvas layer, MainViewModel vm) {
+    public DragReorderManager(ItemsControl items, ScrollViewer scroller, Canvas layer, MainViewModel vm, Action<MemoItem, PixelPoint>? requestPopout = null) {
         _items = items;
         _scroller = scroller;
         _layer = layer;
         _vm = vm;
+        _requestPopout = requestPopout;
 
         _longPressTimer = new DispatcherTimer(
             TimeSpan.FromMilliseconds(LongPressMs),
@@ -109,6 +113,8 @@ public sealed class DragReorderManager {
             RoutingStrategies.Bubble);
         _items.AddHandler(InputElement.PointerReleasedEvent, OnPointerReleased,
             RoutingStrategies.Bubble, handledEventsToo: true);
+        _items.AddHandler(InputElement.PointerCaptureLostEvent, OnPointerCaptureLost,
+            RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
     // ═══════════════════════════════════════════════
@@ -135,6 +141,7 @@ public sealed class DragReorderManager {
         _insertIndex = _dragIndex;
         _downPos = pos;
         _grabOffset = e.GetPosition(container);
+        _pressedPointer = e.Pointer;
 
         _longPressTimer.Start();
     }
@@ -178,7 +185,17 @@ public sealed class DragReorderManager {
             return;
         }
 
-        EndDrag();
+        var releasePoint = GetScreenPoint(e);
+        EndDrag(releasePoint, IsOutsideMainWindow(releasePoint));
+    }
+
+    private void OnPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e) {
+        if (!_isDragging) {
+            CancelLongPress();
+            return;
+        }
+
+        EndDrag(null, requestPopout: false);
     }
 
     // ═══════════════════════════════════════════════
@@ -189,6 +206,7 @@ public sealed class DragReorderManager {
         if (_dragItem == null || _dragContainer == null) return;
 
         _isDragging = true;
+        CaptureDragPointer();
 
         // 测量卡片真实内容高度和底部间距
         ComputeCardDimensions();
@@ -237,7 +255,7 @@ public sealed class DragReorderManager {
     // ═══════════════════════════════════════════════
     //  落位
     // ═══════════════════════════════════════════════
-    private void EndDrag() {
+    private void EndDrag(PixelPoint? releasePoint, bool requestPopout) {
         _longPressTimer.Stop();
         _scrollTimer.Stop();
 
@@ -245,37 +263,43 @@ public sealed class DragReorderManager {
         var startIndex = _dragIndex;
         var targetIndex = _insertIndex;
 
-        RemoveDragVisuals();
+        CleanupDragState();
 
-        var container = _dragContainer;
-        if (container != null)
-            container.Opacity = 1;
+        if (dragged == null) return;
 
-        // 让位项归位
-        foreach (var s in _slides) {
-            s.From = s.Current;
-            s.To = 0;
-            s.DurationMs = AnimMs;
-            s.Elapsed = 0;
+        if (requestPopout && releasePoint.HasValue && _requestPopout != null && _vm.Memos.Contains(dragged)) {
+            _requestPopout(dragged, releasePoint.Value);
+            return;
         }
-        if (_slides.Count > 0 && !_animTimer.IsEnabled)
-            _animTimer.Start();
 
-        _isDragging = false;
-        _dragItem = null;
-        _dragContainer = null;
-        _floatingPopup = null;
-        _placeholder = null;
-
-        if (dragged != null && targetIndex != startIndex) {
+        if (!requestPopout && targetIndex != startIndex) {
             _vm.MoveItem(dragged.Id, targetIndex);
         }
     }
 
-    private void CancelLongPress() {
-        _longPressTimer.Stop();
+    private void CleanupDragState() {
+        var container = _dragContainer;
+        _isDragging = false;
+
+        ReleaseDragPointer();
+        RemoveDragVisuals();
+
+        if (container != null)
+            container.Opacity = 1;
+
         _dragItem = null;
         _dragContainer = null;
+        _floatingPopup = null;
+        _placeholder = null;
+        _pressedPointer = null;
+    }
+
+    private void CancelLongPress() {
+        _longPressTimer.Stop();
+        ReleaseDragPointer();
+        _dragItem = null;
+        _dragContainer = null;
+        _pressedPointer = null;
         _isDragging = false;
     }
 
@@ -846,6 +870,41 @@ public sealed class DragReorderManager {
     // ═══════════════════════════════════════════════
     //  工具方法
     // ═══════════════════════════════════════════════
+
+    private void CaptureDragPointer() {
+        if (_pressedPointer == null) return;
+
+        _pressedPointer.Capture(_items);
+        _capturedPointer = _pressedPointer;
+    }
+
+    private void ReleaseDragPointer() {
+        if (_capturedPointer == null) return;
+
+        if (_capturedPointer.Captured == _items)
+            _capturedPointer.Capture(null);
+        _capturedPointer = null;
+    }
+
+    private PixelPoint? GetScreenPoint(PointerEventArgs e) {
+        var topLevel = TopLevel.GetTopLevel(_items);
+        if (topLevel == null) return null;
+
+        return topLevel.PointToScreen(e.GetPosition(topLevel));
+    }
+
+    private bool IsOutsideMainWindow(PixelPoint? screenPoint) {
+        if (!screenPoint.HasValue) return false;
+        if (TopLevel.GetTopLevel(_items) is not Window window) return false;
+
+        var screen = screenPoint.Value;
+        var origin = window.Position;
+        var scaling = window.RenderScaling;
+        var width = Math.Max(1, (int)Math.Ceiling(window.ClientSize.Width * scaling));
+        var height = Math.Max(1, (int)Math.Ceiling(window.ClientSize.Height * scaling));
+        var bounds = new PixelRect(origin, new PixelSize(width, height));
+        return !bounds.Contains(screen);
+    }
 
     private List<Control> GetContainersInOrder() {
         var result = new List<Control>();

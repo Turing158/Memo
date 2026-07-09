@@ -1,0 +1,187 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:models="using:Memo.Models"
+        mc:Ignorable="d"
+        d:DesignWidth="360" d:DesignHeight="280"
+        x:DataType="models:MemoItem"
+        x:Class="Memo.Views.MemoPopoutWindow"
+        Title="备忘录"
+        Icon="/Assets/appicon.ico"
+        Width="360" Height="280"
+        MinWidth="280" MinHeight="180"
+        ShowInTaskbar="False"
+        SystemDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent">
+
+  <Window.Styles>
+    <Style Selector="Border.PopoutNoteSurface">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="12"/>
+      <Setter Property="Padding" Value="10.5"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+          <BrushTransition Property="Background" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.PopoutNoteSurface.editing">
+      <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}"/>
+    </Style>
+    <Style Selector="SelectableTextBlock.PopoutContent">
+      <Setter Property="SelectionBrush" Value="{StaticResource AccentMutedBrush}"/>
+      <Setter Property="SelectionForegroundBrush" Value="{StaticResource TextPrimaryBrush}"/>
+    </Style>
+    <Style Selector="TextBox.PopoutEditor">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="SelectionBrush" Value="{StaticResource AccentMutedBrush}"/>
+      <Setter Property="SelectionForegroundBrush" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="CaretBrush" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="LineHeight" Value="21"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="AcceptsReturn" Value="True"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="VerticalContentAlignment" Value="Top"/>
+    </Style>
+    <Style Selector="TextBox.PopoutEditor:focus /template/ Border#PART_BorderElement">
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="TextBox.PopoutEditor:pointerover /template/ Border#PART_BorderElement">
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+  </Window.Styles>
+
+  <Border x:Name="_popoutShell"
+          Background="{StaticResource BgPrimaryBrush}"
+          BorderBrush="{StaticResource BorderSubtleBrush}"
+          BorderThickness="1"
+          CornerRadius="14"
+          RenderTransformOrigin="0.5,0.5">
+    <Border.RenderTransform>
+      <ScaleTransform ScaleX="1" ScaleY="1"/>
+    </Border.RenderTransform>
+
+    <Grid RowDefinitions="38,*">
+      <Border Grid.Row="0"
+              Background="{StaticResource BgPrimaryBrush}"
+              BorderBrush="{StaticResource BorderSubtleBrush}"
+              BorderThickness="0,0,0,1"
+              CornerRadius="14,14,0,0">
+        <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,0,8,0">
+          <StackPanel Grid.Column="0"
+                      Orientation="Horizontal"
+                      VerticalAlignment="Center"
+                      Spacing="8">
+            <Image Source="/Assets/appicon.png" Width="18" Height="18"/>
+            <TextBlock x:Name="_titleText"
+                       Text="{Binding Title}"
+                       VerticalAlignment="Center"
+                       FontWeight="SemiBold"
+                       FontSize="13"
+                       Foreground="{StaticResource TextPrimaryBrush}"
+                       TextTrimming="CharacterEllipsis"
+                       MaxWidth="190"/>
+          </StackPanel>
+
+          <Border Grid.Column="1"
+                  x:Name="_titleBarDrag"
+                  Background="Transparent"
+                  PointerPressed="OnTitleBarPointerPressed"/>
+
+          <StackPanel Grid.Column="2"
+                      Orientation="Horizontal"
+                      VerticalAlignment="Center"
+                      Spacing="2">
+            <Button Classes="TitleBarBtn" CornerRadius="6" Click="OnPinToggle" x:Name="_pinButton" ToolTip.Tip="置顶" Width="26" Height="26" MinWidth="26" MinHeight="26">
+              <PathIcon Data="{StaticResource PinIcon}" Width="13" Height="13" Foreground="{StaticResource IconDefaultBrush}">
+                <PathIcon.RenderTransform>
+                  <RotateTransform Angle="0"/>
+                </PathIcon.RenderTransform>
+              </PathIcon>
+            </Button>
+            <Button Classes="TitleBarBtn CloseBtn" CornerRadius="6" Click="OnCloseClick" ToolTip.Tip="关闭" Width="26" Height="26" MinWidth="26" MinHeight="26">
+              <PathIcon Data="{StaticResource CloseIcon}" Width="13" Height="13" Foreground="{StaticResource IconDefaultBrush}"/>
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="1"
+              Background="{StaticResource BgPrimaryBrush}"
+              CornerRadius="0,0,14,14">
+        <Grid RowDefinitions="Auto,*" Margin="8,1,8,8">
+          <Grid Grid.Row="0"
+                Cursor="Hand"
+                Tapped="OnTimeTapped">
+            <TextBlock x:Name="_timeFullText"
+                       Text="{Binding FullTime}"
+                       HorizontalAlignment="Center"
+                       FontSize="11"
+                       FontWeight="Medium"
+                       Foreground="{StaticResource TextTertiaryBrush}"
+                       LetterSpacing="0.3"
+                       Margin="0,0,0,1"
+                       Opacity="0">
+              <TextBlock.Transitions>
+                <Transitions>
+                  <DoubleTransition Property="Opacity" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                </Transitions>
+              </TextBlock.Transitions>
+            </TextBlock>
+            <TextBlock x:Name="_timeShortText"
+                       Text="{Binding RelativeTime}"
+                       HorizontalAlignment="Center"
+                       FontSize="11"
+                       FontWeight="Medium"
+                       Foreground="{StaticResource TextTertiaryBrush}"
+                       LetterSpacing="0.3"
+                       Margin="0,0,0,1"
+                       Opacity="1">
+              <TextBlock.Transitions>
+                <Transitions>
+                  <DoubleTransition Property="Opacity" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                </Transitions>
+              </TextBlock.Transitions>
+            </TextBlock>
+          </Grid>
+
+          <Border Grid.Row="1"
+                  x:Name="_noteSurface"
+                  Classes="PopoutNoteSurface">
+            <Grid>
+              <ScrollViewer x:Name="_contentViewer"
+                            VerticalScrollBarVisibility="Auto"
+                            HorizontalScrollBarVisibility="Disabled"
+                            DoubleTapped="OnContentDoubleTapped">
+                <SelectableTextBlock x:Name="_contentText"
+                                     Classes="PopoutContent"
+                                     Text="{Binding Content}"
+                                     FontSize="13"
+                                     Foreground="{StaticResource TextPrimaryBrush}"
+                                     TextWrapping="Wrap"
+                                     LineHeight="21"/>
+              </ScrollViewer>
+
+              <TextBox x:Name="_editor"
+                       Classes="PopoutEditor"
+                       IsVisible="False"
+                       KeyDown="OnEditorKeyDown"/>
+            </Grid>
+          </Border>
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</Window>

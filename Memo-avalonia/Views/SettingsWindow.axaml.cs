@@ -39,7 +39,19 @@ public partial class SettingsWindow : Window {
         var closeOption = this.FindControl<ToggleButton>("_closeAppOption")!;
         minimizeOption.IsChecked = _settings.CloseButtonAction == CloseButtonAction.MinimizeToTray;
         closeOption.IsChecked = _settings.CloseButtonAction == CloseButtonAction.Close;
+
+        var enabledCheckBox = this.FindControl<CheckBox>("_quickMemoEnabledCheckBox");
+        if (enabledCheckBox != null) {
+            enabledCheckBox.IsChecked = _settings.QuickMemoEnabled;
+        }
+
+        var duplicateCheckBox = this.FindControl<CheckBox>("_duplicateMemoCheckBox");
+        if (duplicateCheckBox != null) {
+            duplicateCheckBox.IsChecked = _settings.DuplicateMemoEnabled;
+        }
+
         UpdateHotkeyButtons();
+        UpdateQuickMemoButtonState();
     }
 
     private void UpdateSettingsFromUi() {
@@ -54,12 +66,25 @@ public partial class SettingsWindow : Window {
         this.FindControl<Button>("_toggleTopmostHotkeyButton")!.Content = _settings.ToggleTopmostHotkey.ToString();
         this.FindControl<Button>("_minimizeHotkeyButton")!.Content = _settings.MinimizeHotkey.ToString();
         this.FindControl<Button>("_showWindowHotkeyButton")!.Content = _settings.ShowWindowHotkey.ToString();
+        var quickMemoButton = this.FindControl<Button>("_quickMemoHotkeyButton");
+        if (quickMemoButton != null) {
+            quickMemoButton.Content = _settings.QuickMemoHotkey.ToString();
+        }
+    }
+
+    private void UpdateQuickMemoButtonState() {
+        var button = this.FindControl<Button>("_quickMemoHotkeyButton");
+        if (button == null) return;
+
+        button.IsEnabled = _settings.QuickMemoEnabled;
+        button.Opacity = _settings.QuickMemoEnabled ? 1.0 : 0.45;
     }
 
     private void StartCapture(HotkeySetting hotkey, Button button) {
         _capturingHotkey = hotkey;
         _capturingButton = button;
         button.Content = "按下快捷键...";
+        ClearHotkeyValidation();
         Focus();
     }
 
@@ -69,18 +94,34 @@ public partial class SettingsWindow : Window {
         e.Handled = true;
         if (e.Key == Key.Escape) {
             ClearHotkey(_capturingHotkey);
+            ClearHotkeyValidation();
             EndCapture();
             return;
         }
 
         var key = NormalizeKey(e.Key);
-        if (key == null || IsModifierKey(e.Key)) return;
+        if (key == null) return;
 
-        _capturingHotkey.Key = key;
-        _capturingHotkey.Ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
-        _capturingHotkey.Alt = e.KeyModifiers.HasFlag(KeyModifiers.Alt);
-        _capturingHotkey.Shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
-        _capturingHotkey.Win = e.KeyModifiers.HasFlag(KeyModifiers.Meta);
+        var candidate = new HotkeySetting {
+            Key = key,
+            Ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control) && key != "Ctrl",
+            Alt = e.KeyModifiers.HasFlag(KeyModifiers.Alt) && key != "Alt",
+            Shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift) && key != "Shift",
+            Win = e.KeyModifiers.HasFlag(KeyModifiers.Meta) && key != "Win",
+        };
+
+        if (!ValidateHotkey(candidate, out var error)) {
+            ShowHotkeyValidation(error);
+            EndCapture();
+            return;
+        }
+
+        _capturingHotkey.Key = candidate.Key;
+        _capturingHotkey.Ctrl = candidate.Ctrl;
+        _capturingHotkey.Alt = candidate.Alt;
+        _capturingHotkey.Shift = candidate.Shift;
+        _capturingHotkey.Win = candidate.Win;
+        ClearHotkeyValidation();
         EndCapture();
     }
 
@@ -98,8 +139,55 @@ public partial class SettingsWindow : Window {
         hotkey.Win = false;
     }
 
-    private static bool IsModifierKey(Key key) =>
-        key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin;
+    private void ShowHotkeyValidation(string message) {
+        var text = this.FindControl<TextBlock>("_hotkeyValidationText");
+        if (text == null) return;
+
+        text.Text = message;
+        text.IsVisible = true;
+    }
+
+    private void ClearHotkeyValidation() {
+        var text = this.FindControl<TextBlock>("_hotkeyValidationText");
+        if (text == null) return;
+
+        text.Text = string.Empty;
+        text.IsVisible = false;
+    }
+
+    private static bool ValidateHotkey(HotkeySetting hotkey, out string error) {
+        var modifierCount = (hotkey.Ctrl ? 1 : 0)
+            + (hotkey.Alt ? 1 : 0)
+            + (hotkey.Shift ? 1 : 0)
+            + (hotkey.Win ? 1 : 0);
+
+        if (modifierCount == 0) {
+            error = "快捷键不能只设置单个按键，请使用 Ctrl、Alt 或 Shift 加一个主键的两键及以上组合。";
+            return false;
+        }
+
+        if (IsSystemReservedHotkey(hotkey)) {
+            error = "该组合是系统快捷键或容易被 Windows 保留，不能设置为应用快捷键。";
+            return false;
+        }
+
+        error = string.Empty;
+        return true;
+    }
+
+    private static bool IsSystemReservedHotkey(HotkeySetting hotkey) {
+        var key = hotkey.Key;
+
+        if (hotkey.Win) return true;
+        if (key is "Ctrl" or "Alt" or "Shift" or "Win") return true;
+        if (hotkey.Ctrl && hotkey.Alt && key == "Delete") return true;
+        if (hotkey.Alt && key is "Tab" or "F4" or "Space" or "Esc") return true;
+        if (hotkey.Ctrl && key is "Esc" or "Tab") return true;
+        if (hotkey.Ctrl && hotkey.Shift && key == "Esc") return true;
+        if (hotkey.Ctrl && key is "C" or "V" or "X" or "Z" or "Y" or "A" or "S" or "P" or "F" or "N" or "O" or "W") return true;
+
+        return false;
+    }
 
     private static string? NormalizeKey(Key key) {
         return key switch {
@@ -107,7 +195,30 @@ public partial class SettingsWindow : Window {
             >= Key.D0 and <= Key.D9 => key.ToString()[1..],
             >= Key.NumPad0 and <= Key.NumPad9 => key.ToString().Replace("NumPad", "NumPad"),
             >= Key.F1 and <= Key.F24 => key.ToString(),
+            Key.LeftCtrl or Key.RightCtrl => "Ctrl",
+            Key.LeftAlt or Key.RightAlt => "Alt",
+            Key.LeftShift or Key.RightShift => "Shift",
+            Key.LWin or Key.RWin => "Win",
+            Key.Tab => "Tab",
+            Key.CapsLock => "CapsLock",
             Key.Space => "Space",
+            Key.OemTilde => "`",
+            Key.OemMinus => "-",
+            Key.OemPlus => "=",
+            Key.OemOpenBrackets => "[",
+            Key.OemCloseBrackets => "]",
+            Key.OemPipe => "\\",
+            Key.OemSemicolon => ";",
+            Key.OemQuotes => "'",
+            Key.OemComma => ",",
+            Key.OemPeriod => ".",
+            Key.OemQuestion => "/",
+            Key.OemBackslash => "\\",
+            Key.Add => "NumPad+",
+            Key.Subtract => "NumPad-",
+            Key.Multiply => "NumPad*",
+            Key.Divide => "NumPad/",
+            Key.Decimal => "NumPad.",
             Key.Insert => "Insert",
             Key.Delete => "Delete",
             Key.Home => "Home",
@@ -152,6 +263,20 @@ public partial class SettingsWindow : Window {
         StartCapture(_settings.ShowWindowHotkey, (Button)sender!);
     }
 
+    private void OnQuickMemoHotkeyClick(object? sender, RoutedEventArgs e) {
+        StartCapture(_settings.QuickMemoHotkey, (Button)sender!);
+    }
+
+    private void OnQuickMemoEnabledChecked(object? sender, RoutedEventArgs e) {
+        _settings.QuickMemoEnabled = true;
+        UpdateQuickMemoButtonState();
+    }
+
+    private void OnQuickMemoEnabledUnchecked(object? sender, RoutedEventArgs e) {
+        _settings.QuickMemoEnabled = false;
+        UpdateQuickMemoButtonState();
+    }
+
     private async void OnResetClick(object? sender, RoutedEventArgs e) {
         var confirm = new ConfirmDialog("重置设置", "确定要恢复默认设置吗？");
         var result = await confirm.ShowDialog<bool>(this);
@@ -163,6 +288,9 @@ public partial class SettingsWindow : Window {
         _settings.ToggleTopmostHotkey = defaults.ToggleTopmostHotkey.Clone();
         _settings.MinimizeHotkey = defaults.MinimizeHotkey.Clone();
         _settings.ShowWindowHotkey = defaults.ShowWindowHotkey.Clone();
+        _settings.QuickMemoHotkey = defaults.QuickMemoHotkey.Clone();
+        _settings.QuickMemoEnabled = defaults.QuickMemoEnabled;
+        _settings.DuplicateMemoEnabled = defaults.DuplicateMemoEnabled;
         ApplySettingsToUi();
     }
 
@@ -174,6 +302,14 @@ public partial class SettingsWindow : Window {
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) {
         CloseWithTransition();
+    }
+
+    private void OnDuplicateMemoChecked(object? sender, RoutedEventArgs e) {
+        _settings.DuplicateMemoEnabled = true;
+    }
+
+    private void OnDuplicateMemoUnchecked(object? sender, RoutedEventArgs e) {
+        _settings.DuplicateMemoEnabled = false;
     }
 
     private void CloseWithTransition() {

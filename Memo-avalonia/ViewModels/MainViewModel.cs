@@ -1,5 +1,6 @@
 using Memo.Models;
 using Memo.Services;
+using Memo.Utils;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -24,14 +25,26 @@ public class MainViewModel {
 
     public async Task LoadAsync() {
         var items = await _storage.LoadAsync();
-        foreach (var item in items.OrderBy(m => m.CreatedAt))
+        foreach (var item in items)
         {
             Memos.Add(item);
         }
     }
 
+    /// <summary>
+    /// 快速添加：若已有相同内容的备忘录则移到首位，否则新增。
+    /// </summary>
+    public void AddOrPromoteItem(string content) {
+        var existing = Memos.FirstOrDefault(m => m.Content == content);
+        if (existing != null) {
+            MoveToFront(existing.Id);
+        } else {
+            AddItem(content);
+        }
+    }
+
     public void AddItem(string content) {
-        var now = DateTime.Now;
+        var now = DateTimeUtils.Now;
         var item = new MemoItem { Content = content, CreatedAt = now, UpdatedAt = now };
         Memos.Insert(0, item);
         _ = _storage.SaveAsync(Memos);
@@ -41,7 +54,12 @@ public class MainViewModel {
         var item = Memos.FirstOrDefault(m => m.Id == id);
         if (item == null) return;
         item.Content = content;
-        item.UpdatedAt = DateTime.Now;
+        item.UpdatedAt = DateTimeUtils.Now;
+    }
+
+    public void UpdateItemAndSave(Guid id, string content) {
+        UpdateItem(id, content);
+        _ = _storage.SaveAsync(Memos);
     }
 
     public void MoveToFront(Guid id) {

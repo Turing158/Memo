@@ -44,11 +44,13 @@ public static class MainWindowConverters {
 
 public partial class MainWindow : Window {
     private MainViewModel ViewModel => (MainViewModel)DataContext!;
+    internal MainViewModel MemoViewModel => ViewModel;
 
     private AppSettings _settings = AppSettings.CreateDefault();
     private Action? _openSettings;
     private Action? _exitApplication;
     private Func<Task<CloseButtonAction?>>? _askCloseButtonAction;
+    public event Action<MemoItem, PixelPoint>? MemoPopoutRequested;
 
     // 删除滑动动画的状态
     private DispatcherTimer? _deleteSlideTimer;
@@ -74,7 +76,8 @@ public partial class MainWindow : Window {
         var dragLayer = this.FindControl<Canvas>("_dragFloatingLayer")!;
 
         // 长按拖拽重排管理器
-        _dragManager = new DragReorderManager(list, scroller, dragLayer, ViewModel);
+        _dragManager = new DragReorderManager(list, scroller, dragLayer, ViewModel,
+            (memo, position) => MemoPopoutRequested?.Invoke(memo, position));
         _dragManager.Attach();
 
         // Enter 提交 / Shift+Enter 换行

@@ -161,13 +161,41 @@
           </Border>
 
           <Border Classes="SettingsCard">
+            <StackPanel Spacing="10">
+              <TextBlock Text="功能设置" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                  <TextBlock Text="快速添加剪贴板内容" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"/>
+                  <TextBlock Text="通过快捷键将剪贴板内容快速添加为备忘录" FontSize="11.5" Foreground="{StaticResource TextTertiaryBrush}"/>
+                </StackPanel>
+                <CheckBox Grid.Column="1" x:Name="_quickMemoEnabledCheckBox"
+                          VerticalAlignment="Center"
+                          IsChecked="True"
+                          Checked="OnQuickMemoEnabledChecked"
+                          Unchecked="OnQuickMemoEnabledUnchecked"/>
+              </Grid>
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                  <TextBlock Text="重复便签" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"/>
+                  <TextBlock Text="关闭时移动已有窗体，开启时总是创建新窗体" FontSize="11.5" Foreground="{StaticResource TextTertiaryBrush}"/>
+                </StackPanel>
+                <CheckBox Grid.Column="1" x:Name="_duplicateMemoCheckBox"
+                          VerticalAlignment="Center"
+                          IsChecked="False"
+                          Checked="OnDuplicateMemoChecked"
+                          Unchecked="OnDuplicateMemoUnchecked"/>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <Border Classes="SettingsCard">
             <StackPanel Spacing="12">
               <StackPanel Spacing="2">
                 <TextBlock Text="快捷键设置" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
                 <TextBlock Text="点击后按快捷键，按 Esc 留空" FontSize="11.5" Foreground="{StaticResource TextTertiaryBrush}"/>
               </StackPanel>
 
-              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
                 <TextBlock Grid.Row="0" Text="置顶" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"/>
                 <Button Grid.Row="0" Grid.Column="1" x:Name="_toggleTopmostHotkeyButton" Classes="HotkeyCaptureBtn" Click="OnToggleTopmostHotkeyClick"/>
 
@@ -176,7 +204,15 @@
 
                 <TextBlock Grid.Row="2" Text="显示软件" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0"/>
                 <Button Grid.Row="2" Grid.Column="1" x:Name="_showWindowHotkeyButton" Classes="HotkeyCaptureBtn" Click="OnShowWindowHotkeyClick" Margin="0,8,0,0"/>
+
+                <TextBlock Grid.Row="3" Text="快速添加（剪贴板）" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0"/>
+                <Button Grid.Row="3" Grid.Column="1" x:Name="_quickMemoHotkeyButton" Classes="HotkeyCaptureBtn" Click="OnQuickMemoHotkeyClick" Margin="0,8,0,0"/>
               </Grid>
+              <TextBlock x:Name="_hotkeyValidationText"
+                         IsVisible="False"
+                         FontSize="11.5"
+                         Foreground="{StaticResource DangerPrimaryBrush}"
+                         TextWrapping="Wrap"/>
             </StackPanel>
           </Border>
 

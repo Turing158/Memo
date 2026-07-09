@@ -1,6 +1,8 @@
 using System;
 using System.ComponentModel;
 using System.Linq;
+using System.Text.Json.Serialization;
+using Memo.Utils;
 
 namespace Memo.Models;
 
@@ -46,21 +48,20 @@ public class MemoItem : INotifyPropertyChanged {
         }
     }
 
+    /// <summary>关联的弹出窗口引用计数（新建新窗体 +1，关闭 -1），不持久化。</summary>
+    [JsonIgnore]
+    public int PopoutRefCount { get; set; }
+
     // —— 派生显示字段 ——
 
-    /// <summary>相对时间：今天显示「HH:mm」，昨天显示「昨天 HH:mm」，更早显示「yyyy/M/d」。</summary>
+    /// <summary>相对时间文本（今天/昨天/周内/同年/跨年）。</summary>
     public string RelativeTime {
-        get {
-            var local = CreatedAt.ToLocalTime();
-            var now = DateTime.Now;
-            if (local.Date == now.Date)
-                return local.ToString("HH:mm");
-            if (local.Date == now.Date.AddDays(-1))
-                return "昨天 " + local.ToString("HH:mm");
-            if (local.Year == now.Year)
-                return local.ToString("M/d");
-            return local.ToString("yyyy/M/d");
-        }
+        get => CreatedAt.ToRelativeTimeString();
+    }
+
+    /// <summary>完整时间文本（今天/昨天/周内/同年/跨年）。</summary>
+    public string FullTime {
+        get => CreatedAt.ToFullTimeString();
     }
 
     public string Title =>

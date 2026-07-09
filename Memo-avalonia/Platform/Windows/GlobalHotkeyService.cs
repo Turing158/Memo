@@ -19,11 +19,14 @@ public sealed class GlobalHotkeyService : IDisposable {
         };
     }
 
-    public void Apply(AppSettings settings, MainWindow mainWindow) {
+    public void Apply(AppSettings settings, MainWindow mainWindow, Action toggleTopmostTarget, Action quickMemoFromClipboard) {
         UnregisterAll();
-        Register(settings.ToggleTopmostHotkey, () => mainWindow.TogglePinned());
+        Register(settings.ToggleTopmostHotkey, toggleTopmostTarget);
         Register(settings.MinimizeHotkey, () => mainWindow.HideToTrayWithTransition());
         Register(settings.ShowWindowHotkey, () => mainWindow.ShowWithTransition());
+        if (settings.QuickMemoEnabled) {
+            Register(settings.QuickMemoHotkey, quickMemoFromClipboard);
+        }
     }
 
     private void Register(HotkeySetting hotkey, Action action) {
@@ -50,7 +53,39 @@ public sealed class GlobalHotkeyService : IDisposable {
             return true;
         }
 
+        if (TryMapNamedKey(value, out key)) return true;
+
         return Enum.TryParse(value, ignoreCase: true, out key) && key != Keys.None;
+    }
+
+    private static bool TryMapNamedKey(string value, out Keys key) {
+        key = value switch {
+            "Ctrl" => Keys.ControlKey,
+            "Alt" => Keys.Menu,
+            "Shift" => Keys.ShiftKey,
+            "Win" => Keys.LWin,
+            "Tab" => Keys.Tab,
+            "CapsLock" => Keys.CapsLock,
+            "Space" => Keys.Space,
+            "`" => Keys.Oemtilde,
+            "-" => Keys.OemMinus,
+            "=" => Keys.Oemplus,
+            "[" => Keys.OemOpenBrackets,
+            "]" => Keys.OemCloseBrackets,
+            "\\" => Keys.OemPipe,
+            ";" => Keys.OemSemicolon,
+            "'" => Keys.OemQuotes,
+            "," => Keys.Oemcomma,
+            "." => Keys.OemPeriod,
+            "/" => Keys.OemQuestion,
+            "NumPad+" => Keys.Add,
+            "NumPad-" => Keys.Subtract,
+            "NumPad*" => Keys.Multiply,
+            "NumPad/" => Keys.Divide,
+            "NumPad." => Keys.Decimal,
+            _ => Keys.None,
+        };
+        return key != Keys.None;
     }
 
     private void UnregisterAll() {

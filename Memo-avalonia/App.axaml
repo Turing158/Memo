@@ -364,6 +364,8 @@
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="SelectionBrush" Value="{StaticResource AccentSubtleBrush}"/>
+      <Setter Property="SelectionForegroundBrush" Value="{StaticResource TextPrimaryBrush}"/>
       <Setter Property="CaretBrush" Value="{StaticResource AccentPrimaryBrush}"/>
       <Setter Property="FontSize" Value="14"/>
       <Setter Property="VerticalContentAlignment" Value="Top"/>

@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Memo.Components.LabeledToggleSwitch"
+             Background="Transparent"
+             Focusable="True"
+             x:Name="_root">
+
+  <UserControl.Styles>
+    <!-- 滑轨：暖色次级底 + 细边框 -->
+    <Style Selector="Border.toggle-track">
+      <Setter Property="Background" Value="{StaticResource BgSecondaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="Height" Value="26"/>
+      <Setter Property="Padding" Value="2"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <!-- 聚焦态：暖橙描边，给键盘用户提供可见反馈 -->
+    <Style Selector="Border.toggle-track.focused">
+      <Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/>
+    </Style>
+    <!-- 滑块：暖焦橙强调底 -->
+    <Style Selector="Border.toggle-thumb">
+      <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="BoxShadow" Value="0 1 2 0 #33C06A48"/>
+    </Style>
+    <!-- 标签文字 -->
+    <Style Selector="TextBlock.toggle-label">
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="HorizontalAlignment" Value="Center"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Foreground" Duration="0:0:0.15"/>
+        </Transitions>
+      </Setter>
+    </Style>
+  </UserControl.Styles>
+
+  <Border x:Name="_track" Classes="toggle-track" PointerPressed="OnTrackPointerPressed">
+    <Grid x:Name="_grid" ColumnDefinitions="*,*">
+      <!-- 两个选项文字（常驻，弱化色），滑块滑过时其上叠白色活动标签 -->
+      <TextBlock Grid.Column="0" x:Name="_leftLabel" Classes="toggle-label" Foreground="{StaticResource TextTertiaryBrush}"/>
+      <TextBlock Grid.Column="1" x:Name="_rightLabel" Classes="toggle-label" Foreground="{StaticResource TextTertiaryBrush}"/>
+      <!-- 滑块：叠在活动列之上，自带白色活动标签 -->
+      <Border x:Name="_thumb" Grid.Column="0" Classes="toggle-thumb" VerticalAlignment="Stretch">
+        <TextBlock x:Name="_thumbLabel" Classes="toggle-label" Foreground="White"/>
+      </Border>
+    </Grid>
+  </Border>
+</UserControl>

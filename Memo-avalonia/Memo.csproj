@@ -7,10 +7,20 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <Version>0.0.1</Version>
+    <Title>Memo</Title>
+    <Authors>StarFall</Authors>
+    <Description>A Memo software</Description>
+    <Copyright>StarFall</Copyright>
+    <ApplicationIcon>Assets\appicon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\appicon.ico" />
   </ItemGroup>
 
   <ItemGroup>

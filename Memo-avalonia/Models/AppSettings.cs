@@ -10,6 +10,8 @@ public class AppSettings {
     public bool QuickMemoEnabled { get; set; } = true;
     /// <summary>重复便签：关闭时如果已存在相同备忘录的窗体则移动位置，开启时总是创建新窗体。</summary>
     public bool DuplicateMemoEnabled { get; set; }
+    /// <summary>托盘图标单击显示主界面。默认 false，使用双击显示（与旧版行为一致）。</summary>
+    public bool TraySingleClickToShow { get; set; }
 
     public static AppSettings CreateDefault() => new();
 
@@ -22,5 +24,6 @@ public class AppSettings {
         QuickMemoHotkey = QuickMemoHotkey.Clone(),
         QuickMemoEnabled = QuickMemoEnabled,
         DuplicateMemoEnabled = DuplicateMemoEnabled,
+        TraySingleClickToShow = TraySingleClickToShow,
     };
 }

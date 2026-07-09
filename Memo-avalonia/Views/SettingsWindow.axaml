@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:comp="clr-namespace:Memo.Components"
         x:Class="Memo.Views.SettingsWindow"
         Title="设置"
         Icon="/Assets/appicon.ico"
@@ -184,6 +185,17 @@
                           IsChecked="False"
                           Checked="OnDuplicateMemoChecked"
                           Unchecked="OnDuplicateMemoUnchecked"/>
+              </Grid>
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                  <TextBlock Text="托盘图标点击习惯" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"/>
+                  <TextBlock Text="设置单击还是双击托盘图标显示主界面" FontSize="11.5" Foreground="{StaticResource TextTertiaryBrush}"/>
+                </StackPanel>
+                <comp:LabeledToggleSwitch Grid.Column="1" x:Name="_trayClickToggle"
+                                          VerticalAlignment="Center"
+                                          MinWidth="80"
+                                          LeftLabel="单击"
+                                          RightLabel="双击"/>
               </Grid>
             </StackPanel>
           </Border>

@@ -49,11 +49,13 @@ public partial class App : Application{
                 _settings = settings;
                 mainWindow.ApplySettings(_settings);
                 _hotkeyService?.Apply(_settings, mainWindow, ToggleLatestTopmostTarget, AddQuickMemoFromClipboard);
+                if (_trayIcon != null) _trayIcon.TraySingleClickToShow = _settings.TraySingleClickToShow;
                 await _settingsStorage.SaveAsync(_settings);
             }
 
             void OpenSettings() {
                 var settingsWindow = new SettingsWindow(_settings, SaveSettingsAsync);
+                settingsWindow.Topmost = mainWindow.Topmost;
                 settingsWindow.ShowDialog(mainWindow);
             }
 
@@ -73,9 +75,9 @@ public partial class App : Application{
 
             var trayMenu = new TrayMenuWindow(mainWindow, ExitApplication);
             _trayIcon = new WindowsTrayIcon(
-                "Assets/appicon.ico",
                 () => trayMenu.ShowNearTray(mainWindow),
                 () => RestoreWindow(mainWindow));
+            if (_trayIcon != null) _trayIcon.TraySingleClickToShow = _settings.TraySingleClickToShow;
 
             _hotkeyService = new GlobalHotkeyService();
             _hotkeyService.Apply(_settings, mainWindow, ToggleLatestTopmostTarget, AddQuickMemoFromClipboard);
@@ -96,6 +98,7 @@ public partial class App : Application{
             _settings = settings;
             mainWindow.ApplySettings(_settings);
             _hotkeyService?.Apply(_settings, mainWindow, ToggleLatestTopmostTarget, AddQuickMemoFromClipboard);
+            if (_trayIcon != null) _trayIcon.TraySingleClickToShow = _settings.TraySingleClickToShow;
         });
     }
 

@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Memo.Components;
 using Memo.Components.Dialogs;
 using Memo.Models;
 using Memo.UI;
@@ -25,6 +26,11 @@ public partial class SettingsWindow : Window {
         Opened += (_, _) => _transition.PlayOpen();
         KeyDown += OnWindowKeyDown;
         ApplySettingsToUi();
+
+        var trayClickToggleInit = this.FindControl<LabeledToggleSwitch>("_trayClickToggle");
+        if (trayClickToggleInit != null) {
+            trayClickToggleInit.ValueChanged += v => _settings.TraySingleClickToShow = !v;
+        }
     }
 
     public SettingsWindow(AppSettings settings, Func<AppSettings, Task> saveSettingsAsync)
@@ -48,6 +54,11 @@ public partial class SettingsWindow : Window {
         var duplicateCheckBox = this.FindControl<CheckBox>("_duplicateMemoCheckBox");
         if (duplicateCheckBox != null) {
             duplicateCheckBox.IsChecked = _settings.DuplicateMemoEnabled;
+        }
+
+        var trayClickToggle = this.FindControl<LabeledToggleSwitch>("_trayClickToggle");
+        if (trayClickToggle != null) {
+            trayClickToggle.Value = !_settings.TraySingleClickToShow;
         }
 
         UpdateHotkeyButtons();

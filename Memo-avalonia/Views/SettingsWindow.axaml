@@ -83,6 +83,15 @@
       <Setter Property="Background" Value="{StaticResource BgHoverBrush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource BorderHoverBrush}"/>
     </Style>
+    <Style Selector="Button.HotkeyCaptureBtn.Conflict /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource DangerSubtleBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource DangerPrimaryBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+    <Style Selector="Button.HotkeyCaptureBtn.Conflict:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource DangerSubtleBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource DangerPrimaryBrush}"/>
+    </Style>
     <Style Selector="Button.ResetBtn">
       <Setter Property="Height" Value="34"/>
       <Setter Property="Padding" Value="14,0"/>
@@ -118,6 +127,28 @@
     </Style>
   </Window.Styles>
 
+  <!--
+    窗体边缘/四角拖拽缩放手柄样式（与 MainWindow 同构）：
+    外壳 Border 内部叠放内容层 + 8 个透明手柄（4 边 + 4 角）。
+    边厚 6px；四角 14×14 对齐外壳 CornerRadius=14 的圆角弧线。
+    一个共享 handler 通过每个手柄的 Tag 区分要缩放的哪条边/哪个角。
+  -->
+  <Window.Styles>
+    <Style Selector="Border.ResizeEdge">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Panel.ZIndex" Value="10"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+    <Style Selector="Border.ResizeCorner">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="0"/>
+      <Setter Property="Panel.ZIndex" Value="20"/>
+    </Style>
+  </Window.Styles>
+
   <Border x:Name="_settingsShell"
           Background="{StaticResource BgPrimaryBrush}"
           BorderBrush="{StaticResource BorderSubtleBrush}"
@@ -127,7 +158,7 @@
     <Border.RenderTransform>
       <ScaleTransform ScaleX="1" ScaleY="1"/>
     </Border.RenderTransform>
-    <Grid RowDefinitions="48,*,Auto">
+    <Grid RowDefinitions="48,*">
       <Border Grid.Row="0"
               Background="{StaticResource SurfacePrimaryBrush}"
               BorderBrush="{StaticResource BorderSubtleBrush}"
@@ -175,6 +206,17 @@
                           Checked="OnQuickMemoEnabledChecked"
                           Unchecked="OnQuickMemoEnabledUnchecked"/>
               </Grid>
+              <Grid ColumnDefinitions="*,Auto" x:Name="_quickMemoShowPopoutAfterAddRow" IsVisible="True">
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                  <TextBlock Text="快速添加后自动显示便签" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"/>
+                  <TextBlock Text="快速添加后在鼠标位置弹出便签窗口" FontSize="11.5" Foreground="{StaticResource TextTertiaryBrush}"/>
+                </StackPanel>
+                <CheckBox Grid.Column="1" x:Name="_quickMemoShowPopoutAfterAddCheckBox"
+                          VerticalAlignment="Center"
+                          IsChecked="False"
+                          Checked="OnQuickMemoShowPopoutAfterAddChecked"
+                          Unchecked="OnQuickMemoShowPopoutAfterAddUnchecked"/>
+              </Grid>
               <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Spacing="2" VerticalAlignment="Center">
                   <TextBlock Text="重复便签" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"/>
@@ -204,7 +246,7 @@
             <StackPanel Spacing="12">
               <StackPanel Spacing="2">
                 <TextBlock Text="快捷键设置" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
-                <TextBlock Text="点击后按快捷键，按 Esc 留空" FontSize="11.5" Foreground="{StaticResource TextTertiaryBrush}"/>
+                <TextBlock Text="点击后按快捷键，按 Esc 留空，右键取消" FontSize="11.5" Foreground="{StaticResource TextTertiaryBrush}"/>
               </StackPanel>
 
               <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
@@ -231,6 +273,16 @@
           <Border Classes="SettingsCard">
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Spacing="2" VerticalAlignment="Center">
+                <TextBlock Text="教程" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                <TextBlock Text="查看使用教程" FontSize="11.5" Foreground="{StaticResource TextTertiaryBrush}"/>
+              </StackPanel>
+              <Button Grid.Column="1" Classes="SecondaryBtn" Content="教程" Click="OnTutorialClick"/>
+            </Grid>
+          </Border>
+
+          <Border Classes="SettingsCard">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="2" VerticalAlignment="Center">
                 <TextBlock Text="重置设置" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
                 <TextBlock Text="恢复关闭行为和快捷键默认值" FontSize="11.5" Foreground="{StaticResource TextTertiaryBrush}"/>
               </StackPanel>
@@ -240,12 +292,39 @@
         </StackPanel>
       </ScrollViewer>
 
-      <Border Grid.Row="2" Background="{StaticResource SurfacePrimaryBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,1,0,0" CornerRadius="0,0,14,14" Padding="16,12">
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-          <Button Classes="SecondaryBtn" Content="取消" Click="OnCloseClick"/>
-          <Button Classes="PrimaryBtn" Content="保存" Click="OnSaveClick"/>
-        </StackPanel>
-      </Border>
+      <!-- 边缘/四角缩放手柄（覆盖在内容之上，RowSpan 横跨 48,* 两行） -->
+      <Border Classes="ResizeEdge" Grid.Row="0" Grid.RowSpan="2"
+              Tag="Top"
+              Height="6" VerticalAlignment="Top" Margin="0"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <Border Classes="ResizeEdge" Grid.Row="0" Grid.RowSpan="2"
+              Tag="Bottom"
+              Height="6" VerticalAlignment="Bottom" Margin="0"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <Border Classes="ResizeEdge" Grid.Row="0" Grid.RowSpan="2"
+              Tag="Left"
+              Width="6" HorizontalAlignment="Left" Margin="0"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <Border Classes="ResizeEdge" Grid.Row="0" Grid.RowSpan="2"
+              Tag="Right"
+              Width="6" HorizontalAlignment="Right" Margin="0"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <Border Classes="ResizeCorner" Grid.Row="0" Grid.RowSpan="2"
+              Tag="TopLeft"
+              Width="14" Height="14" HorizontalAlignment="Left" VerticalAlignment="Top"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <Border Classes="ResizeCorner" Grid.Row="0" Grid.RowSpan="2"
+              Tag="TopRight"
+              Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Top"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <Border Classes="ResizeCorner" Grid.Row="0" Grid.RowSpan="2"
+              Tag="BottomLeft"
+              Width="14" Height="14" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <Border Classes="ResizeCorner" Grid.Row="0" Grid.RowSpan="2"
+              Tag="BottomRight"
+              Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+              PointerPressed="OnResizeHandlePointerPressed"/>
     </Grid>
   </Border>
 </Window>

@@ -48,14 +48,58 @@ public partial class TrayMenuWindow : Window {
     }
 
     private void PositionNearTray(Window owner) {
-        var screen = owner.Screens.ScreenFromWindow(owner) ?? owner.Screens.Primary;
-        if (screen == null) return;
+        // 优先使用鼠标当前位置来确定屏幕和定位，这样菜单会显示在托盘图标附近
+        if (GetCursorPos(out var cursor)) {
+            var pixelCursor = new PixelPoint(cursor.X, cursor.Y);
+            var screen = owner.Screens.ScreenFromPoint(pixelCursor)
+                ?? owner.Screens.ScreenFromWindow(owner)
+                ?? owner.Screens.Primary;
+            if (screen != null) {
+                PositionNearCursor(screen, pixelCursor);
+                return;
+            }
+        }
 
-        var area = screen.WorkingArea;
+        // 回退：使用 owner 所在屏幕的右下角
+        var fallbackScreen = owner.Screens.ScreenFromWindow(owner) ?? owner.Screens.Primary;
+        if (fallbackScreen == null) return;
+
+        var area = fallbackScreen.WorkingArea;
         const int margin = 10;
         var x = area.X + area.Width - (int)Width - margin;
         var y = area.Y + area.Height - (int)Height - margin;
         Position = new PixelPoint(x, y);
+    }
+
+    private void PositionNearCursor(Screen screen, PixelPoint cursor) {
+        var area = screen.WorkingArea;
+        const int margin = 4;
+
+        // 菜单左下角对齐到托盘图标右下角（用鼠标位置近似）
+        // 即：菜单 X = 鼠标 X（左边缘对齐），菜单 Y = 鼠标 Y - 菜单高度（底边缘对齐）
+        var x = cursor.X;
+        var y = cursor.Y - (int)Height;
+
+        // 限制在工作区内
+        var minX = area.X + margin;
+        var maxX = area.Right - (int)Width - margin;
+        var minY = area.Y + margin;
+        var maxY = area.Bottom - (int)Height - margin;
+        if (maxX < minX) maxX = minX;
+        if (maxY < minY) maxY = minY;
+        x = Math.Clamp(x, minX, maxX);
+        y = Math.Clamp(y, minY, maxY);
+
+        Position = new PixelPoint(x, y);
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out POINT lpPoint);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT {
+        public int X;
+        public int Y;
     }
 
     private void OnOpenClick(object? sender, RoutedEventArgs e) {

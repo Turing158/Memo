@@ -12,6 +12,8 @@ public class AppSettings {
     public bool DuplicateMemoEnabled { get; set; }
     /// <summary>托盘图标单击显示主界面。默认 false，使用双击显示（与旧版行为一致）。</summary>
     public bool TraySingleClickToShow { get; set; }
+    /// <summary>快速添加后自动显示便签：依赖 QuickMemoEnabled，仅在启用快速粘贴时才生效。</summary>
+    public bool QuickMemoShowPopoutAfterAdd { get; set; }
 
     public static AppSettings CreateDefault() => new();
 
@@ -25,5 +27,6 @@ public class AppSettings {
         QuickMemoEnabled = QuickMemoEnabled,
         DuplicateMemoEnabled = DuplicateMemoEnabled,
         TraySingleClickToShow = TraySingleClickToShow,
+        QuickMemoShowPopoutAfterAdd = QuickMemoShowPopoutAfterAdd,
     };
 }

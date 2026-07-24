@@ -12,6 +12,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Memo.Behaviors;
 using Memo.Models;
+using Memo.Utils;
 using Memo.ViewModels;
 using System;
 using System.Collections.Generic;
@@ -66,6 +67,8 @@ public partial class MainWindow : Window {
     public MainWindow() {
         InitializeComponent();
         PrepareWindowOpenState();
+        // 等可视化树就绪后再给手柄赋值光标（Load 时 visual tree 才真正存在）
+        Loaded += (_, _) => AssignResizeHandleCursors();
 
         // 为置顶按钮的旋转图标添加角度过渡动画
         SetupPinRotationTransition();
@@ -312,6 +315,29 @@ public partial class MainWindow : Window {
         if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
             BeginMoveDrag(e);
     }
+
+    // —— 边缘/四角拖拽缩放窗口 ——
+    // 8 个透明手柄（4 边 + 4 角）共用一个 handler，靠 Tag 区分要缩放的哪条边/哪个角。
+    private void OnResizeHandlePointerPressed(object? sender, PointerPressedEventArgs e) {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+        if (sender is not Border handle || handle.Tag is not string tag) return;
+        var edge = tag switch {
+            "Top"         => WindowEdge.North,
+            "Bottom"      => WindowEdge.South,
+            "Left"        => WindowEdge.West,
+            "Right"       => WindowEdge.East,
+            "TopLeft"     => WindowEdge.NorthWest,
+            "TopRight"    => WindowEdge.NorthEast,
+            "BottomLeft"  => WindowEdge.SouthWest,
+            "BottomRight" => WindowEdge.SouthEast,
+            _             => WindowEdge.North // 未识别 Tag 时不会走到（防御性）
+        };
+        BeginResizeDrag(edge, e);
+    }
+
+    // 给边缘/四角手柄设置对应方向的光标。Cursor.Parse 只识别 StandardCursorType 枚举名，
+    // 故在代码里按 Tag 映射到确切枚举值，避免写错字符串导致启动崩溃。
+    private void AssignResizeHandleCursors() => this.AssignResizeCursors();
 
     // —— 删除 ——
     private void OnDeleteClick(object? sender, RoutedEventArgs e) {

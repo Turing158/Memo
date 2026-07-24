@@ -11,6 +11,7 @@ using Memo.Views;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 namespace Memo;
@@ -20,6 +21,7 @@ public partial class App : Application{
     private GlobalHotkeyService? _hotkeyService;
     private readonly JsonSettingsStorage _settingsStorage = new();
     private readonly List<MemoPopoutWindow> _memoPopouts = new();
+    private readonly List<TutorialWindow> _tutorialWindows = new();
     private AppSettings _settings = AppSettings.CreateDefault();
     private Window? _latestMemoWindow;
     private MainWindow? _mainWindow;
@@ -81,6 +83,7 @@ public partial class App : Application{
 
             _hotkeyService = new GlobalHotkeyService();
             _hotkeyService.Apply(_settings, mainWindow, ToggleLatestTopmostTarget, AddQuickMemoFromClipboard);
+            _hotkeyService.RestoreRequested += () => Dispatcher.UIThread.Post(() => RestoreWindow(mainWindow));
 
             // 启动程序必须立即显示主界面，不受上次隐藏状态或设置加载影响。
             mainWindow.ShowInTaskbar = false;
@@ -203,36 +206,109 @@ public partial class App : Application{
         timer.Start();
     }
 
+    /// <summary>
+    /// 打开一个独立的非模态教程窗口，与备忘录弹出窗同构。
+    /// 以主窗体所在屏幕工作区为基准居中，不阻塞主窗体 / 设置面板。
+    /// </summary>
+    internal void OpenTutorial(AppSettings settings) {
+        if (_mainWindow == null) return;
+
+        var tutorial = new TutorialWindow(settings);
+        _tutorialWindows.Add(tutorial);
+        _latestMemoWindow = tutorial;
+
+        tutorial.WindowStartupLocation = WindowStartupLocation.Manual;
+        tutorial.Position = CenterInMainScreen(tutorial.Width, tutorial.Height);
+
+        tutorial.Activated += (_, _) => _latestMemoWindow = tutorial;
+        tutorial.Closed += (_, _) => {
+            _tutorialWindows.Remove(tutorial);
+            if (ReferenceEquals(_latestMemoWindow, tutorial)) {
+                _latestMemoWindow = (Window?)_tutorialWindows.LastOrDefault()
+                    ?? (Window?)_memoPopouts.LastOrDefault()
+                    ?? _mainWindow;
+            }
+        };
+
+        tutorial.Show();
+    }
+
+    /// <summary>
+    /// 以主窗体所在屏幕工作区为基准，计算给定尺寸窗口的居中位置（并做边界 clamp）。
+    /// </summary>
+    private PixelPoint CenterInMainScreen(double width, double height) {
+        const int margin = 12;
+        var w = (int)width;
+        var h = (int)height;
+
+        var screen = _mainWindow?.Screens.ScreenFromWindow(_mainWindow)
+            ?? _mainWindow?.Screens.Primary;
+        var area = screen?.WorkingArea ?? new PixelRect(0, 0, 1280, 720);
+
+        var requestedX = area.X + (area.Width - w) / 2.0;
+        var requestedY = area.Y + (area.Height - h) / 2.0;
+
+        var minX = area.X + margin;
+        var minY = area.Y + margin;
+        var maxX = area.Right - w - margin;
+        var maxY = area.Bottom - h - margin;
+        if (maxX < minX) maxX = minX;
+        if (maxY < minY) maxY = minY;
+
+        return new PixelPoint(
+            Avalonia.Utilities.MathUtilities.Clamp((int)requestedX, minX, maxX),
+            Avalonia.Utilities.MathUtilities.Clamp((int)requestedY, minY, maxY));
+    }
+
     private void ToggleLatestTopmostTarget() {
         _memoPopouts.RemoveAll(w => !w.IsVisible);
+        _tutorialWindows.RemoveAll(w => !w.IsVisible);
         if (_latestMemoWindow is MemoPopoutWindow latestPopout && !_memoPopouts.Contains(latestPopout)) {
-            _latestMemoWindow = _memoPopouts.LastOrDefault() ?? (Window?)_mainWindow;
+            _latestMemoWindow = (Window?)_memoPopouts.LastOrDefault()
+                ?? (Window?)_tutorialWindows.LastOrDefault()
+                ?? _mainWindow;
         }
-
-        if (_memoPopouts.Count == 0) {
-            _mainWindow?.TogglePinned();
-            return;
+        if (_latestMemoWindow is TutorialWindow latestTutorial && !_tutorialWindows.Contains(latestTutorial)) {
+            _latestMemoWindow = (Window?)_tutorialWindows.LastOrDefault()
+                ?? (Window?)_memoPopouts.LastOrDefault()
+                ?? _mainWindow;
         }
 
         var target = _latestMemoWindow;
-        if (target is MemoPopoutWindow popout && _memoPopouts.Contains(popout)) {
-            popout.TogglePinned();
-            return;
-        }
-
         if (target is MainWindow mainWindow) {
             mainWindow.TogglePinned();
             return;
         }
+        if (target is MemoPopoutWindow popout && _memoPopouts.Contains(popout)) {
+            popout.TogglePinned();
+            return;
+        }
+        if (target is TutorialWindow tutorial && _tutorialWindows.Contains(tutorial)) {
+            tutorial.TogglePinned();
+            return;
+        }
 
-        var fallback = _memoPopouts.LastOrDefault();
-        if (fallback != null) {
-            fallback.TogglePinned();
-            _latestMemoWindow = fallback;
+        if (_memoPopouts.LastOrDefault() is { } p) {
+            p.TogglePinned();
+            _latestMemoWindow = p;
+            return;
+        }
+        if (_tutorialWindows.LastOrDefault() is { } t) {
+            t.TogglePinned();
+            _latestMemoWindow = t;
             return;
         }
 
         _mainWindow?.TogglePinned();
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out POINT lpPoint);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT {
+        public int X;
+        public int Y;
     }
 
     /// <summary>
@@ -246,12 +322,51 @@ public partial class App : Application{
     private async Task AddQuickMemoFromClipboardAsync() {
         if (_mainWindow?.Clipboard == null) return;
 
+        // 若启用了「自动显示便签」，在读取剪贴板之前预先获取鼠标位置
+        PixelPoint? cursorPosition = null;
+        if (_settings.QuickMemoEnabled && _settings.QuickMemoShowPopoutAfterAdd) {
+            if (GetCursorPos(out var pt)) {
+                cursorPosition = new PixelPoint(pt.X, pt.Y);
+            }
+        }
+
         var text = await _mainWindow.Clipboard.GetTextAsync();
         if (string.IsNullOrWhiteSpace(text)) return;
-        if (text == _lastClipboardText) return;
+
+        // 剪贴板内容与上次相同：不再重复添加，但若启用了自动弹窗仍要处理窗口
+        if (text == _lastClipboardText) {
+            if (cursorPosition.HasValue
+                && _settings.QuickMemoEnabled && _settings.QuickMemoShowPopoutAfterAdd) {
+                var existingMemo = _mainWindow.MemoViewModel.FindByContent(text.Trim());
+                if (existingMemo != null) {
+                    var existing = _memoPopouts.FirstOrDefault(p => p.Memo.Id == existingMemo.Id);
+                    if (existing != null) {
+                        AnimateWindowPosition(existing, ClampPopoutPosition(cursorPosition.Value));
+                        _latestMemoWindow = existing;
+                        existing.Activate();
+                    } else {
+                        OpenMemoPopout(existingMemo, cursorPosition.Value);
+                    }
+                }
+            }
+            return;
+        }
 
         _lastClipboardText = text;
-        _mainWindow.MemoViewModel.AddOrPromoteItem(text.Trim());
+        var memo = _mainWindow.MemoViewModel.AddOrPromoteItem(text.Trim());
+
+        if (memo != null && cursorPosition.HasValue
+            && _settings.QuickMemoEnabled && _settings.QuickMemoShowPopoutAfterAdd) {
+            // 若该备忘录已有弹出窗口，直接将其移动到鼠标位置（无论 DuplicateMemoEnabled 如何设置）
+            var existing = _memoPopouts.FirstOrDefault(p => p.Memo.Id == memo.Id);
+            if (existing != null) {
+                AnimateWindowPosition(existing, ClampPopoutPosition(cursorPosition.Value));
+                _latestMemoWindow = existing;
+                existing.Activate();
+            } else {
+                OpenMemoPopout(memo, cursorPosition.Value);
+            }
+        }
     }
 
     /// <summary>

@@ -13,23 +13,27 @@ public sealed class GlobalHotkeyService : IDisposable {
     private readonly Dictionary<int, Action> _actions = new();
     private int _nextId = 1;
 
+    public event Action? RestoreRequested;
+
     public GlobalHotkeyService() {
         _window.HotkeyPressed += id => {
             if (_actions.TryGetValue(id, out var action)) action();
         };
+        _window.RestoreRequested += () => RestoreRequested?.Invoke();
     }
 
     public void Apply(AppSettings settings, MainWindow mainWindow, Action toggleTopmostTarget, Action quickMemoFromClipboard) {
         UnregisterAll();
-        Register(settings.ToggleTopmostHotkey, toggleTopmostTarget);
-        Register(settings.MinimizeHotkey, () => mainWindow.HideToTrayWithTransition());
-        Register(settings.ShowWindowHotkey, () => mainWindow.ShowWithTransition());
+        TryRegister(settings.ToggleTopmostHotkey, toggleTopmostTarget);
+        TryRegister(settings.MinimizeHotkey, () => mainWindow.HideToTrayWithTransition());
+        TryRegister(settings.ShowWindowHotkey, () => mainWindow.ShowWithTransition());
         if (settings.QuickMemoEnabled) {
-            Register(settings.QuickMemoHotkey, quickMemoFromClipboard);
+            TryRegister(settings.QuickMemoHotkey, quickMemoFromClipboard);
         }
     }
 
-    private void Register(HotkeySetting hotkey, Action action) {
+    // 单个按键注册：失败（被系统/其它程序占用）时静默跳过，不影响其它按键。
+    private void TryRegister(HotkeySetting hotkey, Action action) {
         if (hotkey.IsEmpty || !TryMapKey(hotkey.Key, out var key)) return;
 
         var modifiers = 0u;
@@ -109,14 +113,22 @@ public sealed class GlobalHotkeyService : IDisposable {
 
     private sealed class HotkeyWindow : NativeWindow {
         public event Action<int>? HotkeyPressed;
+        public event Action? RestoreRequested;
+
+        private readonly uint _restoreMessageId;
 
         public HotkeyWindow() {
+            _restoreMessageId = SingleInstance.GetRestoreMessageId();
             CreateHandle(new CreateParams());
         }
 
         protected override void WndProc(ref Message m) {
             if (m.Msg == WmHotkey) {
                 HotkeyPressed?.Invoke(m.WParam.ToInt32());
+                return;
+            }
+            if (_restoreMessageId != 0 && m.Msg == _restoreMessageId) {
+                RestoreRequested?.Invoke();
                 return;
             }
             base.WndProc(ref m);

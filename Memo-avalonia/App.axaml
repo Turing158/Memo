@@ -244,6 +244,7 @@
       <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="12"/>
+      <Setter Property="Height" Value="76"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Transitions">
         <Transitions>

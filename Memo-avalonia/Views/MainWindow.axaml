@@ -24,6 +24,36 @@
   </Window.DataContext>
 
   <!--
+    窗体边缘/四角拖拽缩放手柄。
+    原理：外壳 Border（_windowShell）内部叠放两层——
+      第 0 层：内容 Grid（标题栏 + 列表/输入区），占满外壳；
+      第 1 层：8 个透明拖拽手柄（4 边 + 4 角），Panel.IsHitTestVisible=True。
+    边厚 6px 提供顺手、准确的拖拽带；四角 14×14 对齐外壳 CornerRadius=14 的圆角弧线，
+    让四角拖拽区真正作用在圆角上。所有 Background=Transparent 以保证能接收指针事件
+    （与 _titleBarDrag 一致：透明也必须显式设背景才能 hit-test）。
+    一个共享 handler 通过每个手柄的 Tag 区分要缩放的哪条边/哪个角。
+  -->
+  <Window.Styles>
+    <!-- 边手柄：Cursor=对应缩放方向。Hover 仅点亮一条 1px 边线作微弱反馈 -->
+    <Style Selector="Border.ResizeEdge">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Panel.ZIndex" Value="10"/>
+    </Style>
+    <Style Selector="Border.ResizeEdge:pointerover">
+      <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="Opacity" Value="0.6"/>
+    </Style>
+    <!-- 角手柄：14×14，Hover 在半透明方块上画一段贴合圆角的弧线 -->
+    <Style Selector="Border.ResizeCorner">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="0"/>
+      <Setter Property="Panel.ZIndex" Value="20"/>
+    </Style>
+  </Window.Styles>
+
+  <!--
     最外层圆角容器 — 统一窗口四角的圆角外观。
     Avalonia 11.1 原生窗口在 SystemDecorations=None 下不支持圆角窗口，
     用一个带圆角 + 边框的 Border 模拟整个窗口的视觉外壳。
@@ -107,7 +137,7 @@
       <Border Grid.Row="1"
               Background="{StaticResource BgPrimaryBrush}"
               CornerRadius="0,0,14,14">
-        <Grid RowDefinitions="Auto,*" Margin="16,14,16,18">
+        <Grid RowDefinitions="Auto,*" Margin="16,14,16,12">
 
           <!-- ── 顶部输入框 ── -->
           <Border Grid.Row="0"
@@ -115,7 +145,7 @@
                   Classes="InputRoot"
                   CornerRadius="12"
                   Padding="16,13"
-                  Margin="0,0,0,16">
+                  Margin="0,0,0,10">
             <Grid ColumnDefinitions="Auto,*">
               <!-- 左侧装饰条 -->
               <Border Grid.Column="0"
@@ -175,8 +205,17 @@
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled"
                           IsVisible="{Binding Memos.Count, Converter={x:Static converters:MainWindowConverters.IsGreaterThanZero}}">
+              <ScrollViewer.OpacityMask>
+                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                  <GradientStop Offset="0"     Color="#00000000"/>
+                  <GradientStop Offset="0.017" Color="#FFFFFFFF"/>
+                  <GradientStop Offset="0.983" Color="#FFFFFFFF"/>
+                  <GradientStop Offset="1"     Color="#00000000"/>
+                </LinearGradientBrush>
+              </ScrollViewer.OpacityMask>
               <ItemsControl x:Name="_memoList" ItemsSource="{Binding Memos}"
-                              Margin="0,0,6,0">
+                              Padding="6,6,6,6"
+                              HorizontalAlignment="Stretch">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="models:MemoItem">
                     <Border Classes="MemoCard"
@@ -261,6 +300,52 @@
           </Grid>
         </Grid>
       </Border>
+
+      <!-- ═══════════════════════════════════════════════
+           边缘/四角缩放手柄（覆盖在内容之上，ZIndex 更高）
+           - 边：厚 6px，提供顺手准确的拖拽带
+           - 角：14×14，四角对齐外壳 CornerRadius=14 的圆角弧线
+           ═══════════════════════════════════════════════ -->
+      <!-- 上边 -->
+      <Border Classes="ResizeEdge" Grid.Row="0" Grid.RowSpan="2"
+              Tag="Top"
+              Height="6" VerticalAlignment="Top" Margin="0"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <!-- 下边 -->
+      <Border Classes="ResizeEdge" Grid.Row="0" Grid.RowSpan="2"
+              Tag="Bottom"
+              Height="6" VerticalAlignment="Bottom" Margin="0"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <!-- 左边 -->
+      <Border Classes="ResizeEdge" Grid.Row="0" Grid.RowSpan="2"
+              Tag="Left"
+              Width="6" HorizontalAlignment="Left" Margin="0"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <!-- 右边 -->
+      <Border Classes="ResizeEdge" Grid.Row="0" Grid.RowSpan="2"
+              Tag="Right"
+              Width="6" HorizontalAlignment="Right" Margin="0"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <!-- 左上 -->
+      <Border Classes="ResizeCorner" Grid.Row="0" Grid.RowSpan="2"
+              Tag="TopLeft"
+              Width="14" Height="14" HorizontalAlignment="Left" VerticalAlignment="Top"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <!-- 右上 -->
+      <Border Classes="ResizeCorner" Grid.Row="0" Grid.RowSpan="2"
+              Tag="TopRight"
+              Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Top"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <!-- 左下 -->
+      <Border Classes="ResizeCorner" Grid.Row="0" Grid.RowSpan="2"
+              Tag="BottomLeft"
+              Width="14" Height="14" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+              PointerPressed="OnResizeHandlePointerPressed"/>
+      <!-- 右下 -->
+      <Border Classes="ResizeCorner" Grid.Row="0" Grid.RowSpan="2"
+              Tag="BottomRight"
+              Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+              PointerPressed="OnResizeHandlePointerPressed"/>
 
     </Grid>
   </Border>

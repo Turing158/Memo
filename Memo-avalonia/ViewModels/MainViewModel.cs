@@ -33,21 +33,28 @@ public class MainViewModel {
 
     /// <summary>
     /// 快速添加：若已有相同内容的备忘录则移到首位，否则新增。
+    /// 返回被影响（新建或提升）的备忘录。
     /// </summary>
-    public void AddOrPromoteItem(string content) {
-        var existing = Memos.FirstOrDefault(m => m.Content == content);
+    public MemoItem? FindByContent(string content) =>
+        Memos.FirstOrDefault(m => m.Content == content);
+
+    /// <summary>
+    /// 快速添加：若已有相同内容的备忘录则移到首位，否则新增。
+    public MemoItem? AddOrPromoteItem(string content) {
+        var existing = FindByContent(content);
         if (existing != null) {
             MoveToFront(existing.Id);
-        } else {
-            AddItem(content);
+            return existing;
         }
+        return AddItem(content);
     }
 
-    public void AddItem(string content) {
+    public MemoItem? AddItem(string content) {
         var now = DateTimeUtils.Now;
         var item = new MemoItem { Content = content, CreatedAt = now, UpdatedAt = now };
         Memos.Insert(0, item);
         _ = _storage.SaveAsync(Memos);
+        return item;
     }
 
     public void UpdateItem(Guid id, string content) {

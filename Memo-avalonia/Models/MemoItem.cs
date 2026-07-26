@@ -1,7 +1,7 @@
 using System;
 using System.ComponentModel;
-using System.Linq;
 using System.Text.Json.Serialization;
+using Memo.Markdown;
 using Memo.Utils;
 
 namespace Memo.Models;
@@ -64,19 +64,10 @@ public class MemoItem : INotifyPropertyChanged {
         get => CreatedAt.ToFullTimeString();
     }
 
-    public string Title =>
-        (_content ?? string.Empty)
-            .Split('\n')
-            .FirstOrDefault(l => !string.IsNullOrWhiteSpace(l))?.Trim()
-        ?? (_content ?? string.Empty).Trim();
+    public string Title => MarkdownSummary.GetTitle(_content);
 
     /// <summary>副标题：仅取内容的第二行（trim 后），为空则返回空字符串。</summary>
-    public string Subtitle {
-        get {
-            var second = (_content ?? string.Empty).Split('\n').ElementAtOrDefault(1);
-            return second?.Trim() ?? string.Empty;
-        }
-    }
+    public string Subtitle => MarkdownSummary.GetSubtitle(_content);
 
     public event PropertyChangedEventHandler? PropertyChanged;
     protected void OnPropertyChanged(string name) =>

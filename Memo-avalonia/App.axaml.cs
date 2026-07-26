@@ -152,7 +152,7 @@ public partial class App : Application{
 
         var clamped = ClampPopoutPosition(position);
         var popout = new MemoPopoutWindow(memo, clamped,
-            (item, content) => _mainWindow.MemoViewModel.UpdateItemAndSave(item.Id, content));
+            (item, content) => _mainWindow.MemoViewModel.UpdateItemAndSaveAsync(item.Id, content));
         memo.PopoutRefCount++;
         _memoPopouts.Add(popout);
         _latestMemoWindow = popout;

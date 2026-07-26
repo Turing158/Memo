@@ -5,6 +5,7 @@
         xmlns:vm="using:Memo.ViewModels"
         xmlns:converters="using:Memo.Views"
         xmlns:models="using:Memo.Models"
+        xmlns:components="using:Memo.Components"
         mc:Ignorable="d"
         d:DesignWidth="420" d:DesignHeight="680"
         x:DataType="vm:MainViewModel"
@@ -150,34 +151,13 @@
               CornerRadius="0,0,14,14">
         <Grid RowDefinitions="Auto,*" Margin="16,14,16,12">
 
-          <!-- ── 顶部输入框 ── -->
-          <Border Grid.Row="0"
-                  x:Name="_inputRoot"
-                  Classes="InputRoot"
-                  CornerRadius="12"
-                  Padding="16,13"
-                  Margin="0,0,0,10">
-            <Grid ColumnDefinitions="Auto,*">
-              <!-- 左侧装饰条 -->
-              <Border Grid.Column="0"
-                      Width="3" MinHeight="18"
-                      CornerRadius="2"
-                      Background="{StaticResource AccentPrimaryBrush}"
-                      Opacity="0.7"
-                      VerticalAlignment="Stretch"/>
-              <!-- 输入本体 -->
-              <TextBox Grid.Column="1"
-                       Margin="12,0,0,0"
-                       x:Name="_inputBox"
-                       Classes="InputBox"
-                       MinHeight="20" MaxHeight="80"
-                       TextWrapping="Wrap"
-                       AcceptsReturn="False"
-                       MaxLines="4"
-                       Watermark="记点什么，按 Enter 保存，Shift+Enter 换行..."
-                       LetterSpacing="0.1"/>
-            </Grid>
-          </Border>
+          <!-- ── Markdown 编辑器 ── -->
+          <components:MarkdownEditor Grid.Row="0"
+                                     x:Name="_markdownEditor"
+                                     MinHeight="110"
+                                     MaxHeight="230"
+                                     Margin="0,0,0,10"
+                                     ShowNewAction="True"/>
 
           <!-- ── 备忘录列表 / 空状态 ── -->
           <Grid Grid.Row="1">
@@ -203,7 +183,7 @@
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextPrimaryBrush}"
                            HorizontalAlignment="Center"/>
-                <TextBlock Text="在上方输入框写下第一条&#x0a;按 Enter 保存"
+                <TextBlock Text="在上方写下第一条 Markdown 备忘录&#x0a;按 Enter 保存"
                            FontSize="12.5"
                            Foreground="{StaticResource TextTertiaryBrush}"
                            TextAlignment="Center"

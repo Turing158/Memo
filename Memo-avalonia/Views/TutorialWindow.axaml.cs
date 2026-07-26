@@ -102,17 +102,24 @@ public partial class TutorialWindow : Window {
         if (content == null) return;
 
         var lines = new System.Collections.Generic.List<string> {
-            "一、创建备忘录",
-            "在软件顶部输入框中输入内容，按 Enter 即可添加一条新备忘录（Shift+Enter 换行）。",
-            "双击列表中的备忘录可在顶部输入框中重新编辑。",
+            "一、Markdown 备忘录",
+            "顶部编辑器支持标题、强调、列表、任务项、引用、链接、代码、表格与图片。",
+            "新建时按 Enter 保存，Shift+Enter 换行；工具栏可直接插入常用格式。",
             "",
-            "二、编辑与分离",
-            "双击卡片进入编辑（Esc 保存）；长按拖拽卡片可拉出独立窗口，拖回主窗体则合并。",
+            "二、编辑与预览",
+            "双击卡片或便签内容进入编辑；停止输入 500ms 后自动保存。",
+            "Ctrl+Enter 保存并预览，Esc 恢复进入编辑时的内容。",
             "",
-            "三、置顶与关闭",
+            "三、插入图片",
+            "可粘贴、拖入或选择本地图片，也可从更多菜单插入 HTTPS 图片地址。",
+            "",
+            "四、分离便签",
+            "长按拖拽卡片可拉出独立窗口，拖回主窗体则合并。",
+            "",
+            "五、置顶与关闭",
             "点便签右上角图钉可置顶，「×」关闭；主窗口关闭按钮可在设置中选择最小化到托盘或退出。",
             "",
-            "四、快捷键",
+            "六、快捷键",
             $"置顶主窗口：{s.ToggleTopmostHotkey}",
             $"最小化到托盘：{s.MinimizeHotkey}",
             $"显示主窗口：{s.ShowWindowHotkey}",
@@ -123,7 +130,7 @@ public partial class TutorialWindow : Window {
         }
 
         lines.Add("");
-        lines.Add("五、托盘图标");
+        lines.Add("七、托盘图标");
         lines.Add("点击托盘图标显示主窗口（单击/双击可在设置中切换）。");
 
         content.Text = string.Join("\n", lines);

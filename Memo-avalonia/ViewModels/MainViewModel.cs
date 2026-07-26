@@ -57,6 +57,14 @@ public class MainViewModel {
         return item;
     }
 
+    public async Task<MemoItem?> AddItemAndSaveAsync(string content) {
+        var now = DateTimeUtils.Now;
+        var item = new MemoItem { Content = content, CreatedAt = now, UpdatedAt = now };
+        Memos.Insert(0, item);
+        await _storage.SaveAsync(Memos);
+        return item;
+    }
+
     public void UpdateItem(Guid id, string content) {
         var item = Memos.FirstOrDefault(m => m.Id == id);
         if (item == null) return;
@@ -67,6 +75,26 @@ public class MainViewModel {
     public void UpdateItemAndSave(Guid id, string content) {
         UpdateItem(id, content);
         _ = _storage.SaveAsync(Memos);
+    }
+
+    public async Task UpdateItemAndSaveAsync(Guid id, string content) {
+        UpdateItem(id, content);
+        await _storage.SaveAsync(Memos);
+    }
+
+    public async Task CompleteItemEditAndSaveAsync(Guid id, string content) {
+        var item = Memos.FirstOrDefault(m => m.Id == id);
+        if (item == null) return;
+
+        UpdateItem(id, content);
+        var index = Memos.IndexOf(item);
+        if (index > 0) Memos.Move(index, 0);
+        if (EditingId == id) EditingId = null;
+        await _storage.SaveAsync(Memos);
+    }
+
+    public async Task SaveAsync() {
+        await _storage.SaveAsync(Memos);
     }
 
     public void MoveToFront(Guid id) {

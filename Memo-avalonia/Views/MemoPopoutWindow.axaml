@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:models="using:Memo.Models"
+        xmlns:components="using:Memo.Components"
         mc:Ignorable="d"
         d:DesignWidth="360" d:DesignHeight="280"
         x:DataType="models:MemoItem"
@@ -32,34 +33,6 @@
     </Style>
     <Style Selector="Border.PopoutNoteSurface.editing">
       <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}"/>
-    </Style>
-    <Style Selector="SelectableTextBlock.PopoutContent">
-      <Setter Property="SelectionBrush" Value="{StaticResource AccentMutedBrush}"/>
-      <Setter Property="SelectionForegroundBrush" Value="{StaticResource TextPrimaryBrush}"/>
-    </Style>
-    <Style Selector="TextBox.PopoutEditor">
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-      <Setter Property="SelectionBrush" Value="{StaticResource AccentMutedBrush}"/>
-      <Setter Property="SelectionForegroundBrush" Value="{StaticResource TextPrimaryBrush}"/>
-      <Setter Property="CaretBrush" Value="{StaticResource AccentPrimaryBrush}"/>
-      <Setter Property="FontSize" Value="13"/>
-      <Setter Property="LineHeight" Value="21"/>
-      <Setter Property="Padding" Value="0"/>
-      <Setter Property="AcceptsReturn" Value="True"/>
-      <Setter Property="TextWrapping" Value="Wrap"/>
-      <Setter Property="VerticalContentAlignment" Value="Top"/>
-    </Style>
-    <Style Selector="TextBox.PopoutEditor:focus /template/ Border#PART_BorderElement">
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderBrush" Value="Transparent"/>
-    </Style>
-    <Style Selector="TextBox.PopoutEditor:pointerover /template/ Border#PART_BorderElement">
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderBrush" Value="Transparent"/>
     </Style>
   </Window.Styles>
 
@@ -170,25 +143,9 @@
           <Border Grid.Row="1"
                   x:Name="_noteSurface"
                   Classes="PopoutNoteSurface">
-            <Grid>
-              <ScrollViewer x:Name="_contentViewer"
-                            VerticalScrollBarVisibility="Auto"
-                            HorizontalScrollBarVisibility="Disabled"
-                            DoubleTapped="OnContentDoubleTapped">
-                <SelectableTextBlock x:Name="_contentText"
-                                     Classes="PopoutContent"
-                                     Text="{Binding Content}"
-                                     FontSize="13"
-                                     Foreground="{StaticResource TextPrimaryBrush}"
-                                     TextWrapping="Wrap"
-                                     LineHeight="21"/>
-              </ScrollViewer>
-
-              <TextBox x:Name="_editor"
-                       Classes="PopoutEditor"
-                       IsVisible="False"
-                       KeyDown="OnEditorKeyDown"/>
-            </Grid>
+            <components:MarkdownEditor x:Name="_markdownEditor"
+                                       HorizontalAlignment="Stretch"
+                                       VerticalAlignment="Stretch"/>
           </Border>
         </Grid>
       </Border>

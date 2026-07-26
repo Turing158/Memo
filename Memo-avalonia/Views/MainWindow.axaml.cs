@@ -12,12 +12,15 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Memo.Behaviors;
+using Memo.Components;
 using Memo.Models;
+using Memo.Services;
 using Memo.UI;
 using Memo.Utils;
 using Memo.ViewModels;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
@@ -60,6 +63,8 @@ public partial class MainWindow : Window {
     private int _deleteRequestVersion;
     private readonly List<DeleteExitVisual> _deleteExitVisuals = new();
     private WindowTransitionController? _windowTransition;
+    private MemoItem? _displayedMemo;
+    private string _newMemoDraft = string.Empty;
 
     private sealed class DeleteExitVisual {
         public required Canvas Layer { get; init; }
@@ -80,29 +85,29 @@ public partial class MainWindow : Window {
         // 等可视化树就绪后再给手柄赋值光标（Load 时 visual tree 才真正存在）
         Loaded += (_, _) => AssignResizeHandleCursors();
 
-        var inputBox = this.FindControl<TextBox>("_inputBox")!;
         var list = this.FindControl<ItemsControl>("_memoList")!;
         var scroller = this.FindControl<ScrollViewer>("_scrollViewer")!;
         var dragLayer = this.FindControl<Canvas>("_dragFloatingLayer")!;
 
-        // 长按拖拽重排管理器
         _dragManager = new DragReorderManager(list, scroller, dragLayer, ViewModel,
             (memo, position) => MemoPopoutRequested?.Invoke(memo, position));
         _dragManager.Attach();
-        Closed += OnMainWindowClosed;
 
-        // Enter 提交 / Shift+Enter 换行
-        inputBox.KeyDown += InputBox_KeyDown;
+        _markdownEditor.SaveRequestedAsync = SaveMarkdownAsync;
+        _markdownEditor.CancelRequestedAsync = CancelMarkdownAsync;
+        _markdownEditor.EditRequested += async (_, _) => {
+            if (_displayedMemo != null) await BeginMemoEditAsync(_displayedMemo);
+        };
+        _markdownEditor.NewRequested += async (_, _) => await StartNewComposerAsync();
 
-        // 双击卡片进入编辑 — Avalonia 11 AddHandler 签名
         list.AddHandler(InputElement.DoubleTappedEvent, OnMemoDoubleTapped,
             RoutingStrategies.Tunnel | RoutingStrategies.Bubble);
+        Closed += OnMainWindowClosed;
 
-        // 加载数据 + 初始高亮 + 聚焦
         this.Loaded += async (_, _) => {
             await ViewModel.LoadAsync();
             UpdateEditVisual();
-            inputBox.Focus();
+            _markdownEditor.BeginNew();
         };
     }
 
@@ -127,12 +132,9 @@ public partial class MainWindow : Window {
         ApplyDockSizeSetting(settings.MainWindowDockSize);
     }
 
-    public void FocusInputForNewMemo() {
-        var inputBox = this.FindControl<TextBox>("_inputBox");
-        if (inputBox == null) return;
-
-        inputBox.Focus();
-        inputBox.CaretIndex = inputBox.Text?.Length ?? 0;
+    public async void FocusInputForNewMemo() {
+        await StartNewComposerAsync();
+        _markdownEditor.FocusEditor();
     }
 
     public void ShowWithTransition() {
@@ -171,66 +173,93 @@ public partial class MainWindow : Window {
         _windowTransition?.PlayOpen();
     }
 
-    // —— 键盘处理 ——
-    private void InputBox_KeyDown(object? sender, KeyEventArgs e) {
-        if (e.Key != Key.Enter) return;
+    // —— Markdown 编辑与保存 ——
+    private async Task<bool> SaveMarkdownAsync(MarkdownSaveRequest request) {
+        if (request.IsNewMemo) {
+            var item = await ViewModel.AddItemAndSaveAsync(request.Markdown);
+            if (item == null) return false;
+            _newMemoDraft = string.Empty;
+            return true;
+        }
 
-        // AcceptsReturn=True 时，统一在 KeyDown 先设 Handled=true，
-        // 阻止 TextBox 内部把 Enter 键插入换行；再根据 Shift 决定「手动插行」还是「提交」。
-        e.Handled = true;
-        var inputBox = (TextBox)sender!;
-
-        if ((e.KeyModifiers & KeyModifiers.Shift) == KeyModifiers.Shift) {
-            // Shift+Enter → 按需插入新行（无上限，由 MaxLines 控制屏幕显示高度）
-            var pos = inputBox.CaretIndex;
-            var text = inputBox.Text ?? "";
-            inputBox.Text = text.Insert(pos, "\n");
-            inputBox.CaretIndex = pos + 1;
+        var memo = _displayedMemo;
+        if (memo == null) return false;
+        if (request.CompleteEditing) {
+            await ViewModel.CompleteItemEditAndSaveAsync(memo.Id, request.Markdown);
+            MemoEditCoordinator.Shared.Release(memo.Id, this);
+            UpdateEditVisual();
         }
         else {
-            // Enter → 提交新增或保存编辑
-            SubmitText(inputBox);
+            await ViewModel.UpdateItemAndSaveAsync(memo.Id, request.Markdown);
         }
+        return true;
     }
 
-    private void SubmitText(TextBox inputBox) {
-        var raw = inputBox.Text ?? "";
-        var content = raw.TrimEnd('\r', '\n', ' ', '\t');
-
-        if (FirstLineEmpty(content)) return; // 首行为空 → 忽略
-
-        var vm = ViewModel;
-
-        if (vm.EditingId.HasValue) {
-            // 编辑态：保存内容并移到首位
-            var itemId = vm.EditingId.Value;
-            vm.UpdateItem(itemId, content);
-            vm.MoveToFront(itemId);
-            vm.EndEdit();
-        }
-        else {
-            // 非编辑态：新增
-            vm.AddItem(content);
-        }
-
-        inputBox.Text = string.Empty;
+    private async Task CancelMarkdownAsync(string restoreMarkdown) {
+        var memo = _displayedMemo;
+        if (memo == null) return;
+        await ViewModel.UpdateItemAndSaveAsync(memo.Id, restoreMarkdown);
+        MemoEditCoordinator.Shared.Release(memo.Id, this);
+        ViewModel.EndEdit();
         UpdateEditVisual();
     }
 
-    private static bool FirstLineEmpty(string text) =>
-        string.IsNullOrWhiteSpace(text.Split('\n')[0]);
+    private async Task BeginMemoEditAsync(MemoItem item) {
+        if (_markdownEditor.IsEditing && !_markdownEditor.IsNewMemo) {
+            if (ReferenceEquals(_displayedMemo, item)) {
+                _markdownEditor.FocusEditor();
+                return;
+            }
+            if (!await _markdownEditor.CompleteEditingAsync()) return;
+        }
+        else if (_markdownEditor.IsNewMemo) {
+            _newMemoDraft = _markdownEditor.Markdown;
+        }
 
-    // —— 双击编辑 ——
-    private void OnMemoDoubleTapped(object? sender, RoutedEventArgs e) {
+        if (!await MemoEditCoordinator.Shared.AcquireAsync(item.Id, this, RelinquishActiveEditorAsync))
+            return;
+        SetDisplayedMemo(item);
+        ViewModel.BeginEdit(item.Id);
+        _markdownEditor.BeginExistingEdit(item.Content);
+        UpdateEditVisual();
+    }
+
+    private async Task<bool> RelinquishActiveEditorAsync() {
+        if (_markdownEditor.IsEditing && !_markdownEditor.IsNewMemo)
+            return await _markdownEditor.CompleteEditingAsync();
+        return true;
+    }
+
+    private async Task StartNewComposerAsync() {
+        if (_markdownEditor.IsEditing && !_markdownEditor.IsNewMemo &&
+            !await _markdownEditor.CompleteEditingAsync()) return;
+
+        if (_displayedMemo != null)
+            MemoEditCoordinator.Shared.Release(_displayedMemo.Id, this);
+        ViewModel.EndEdit();
+        SetDisplayedMemo(null);
+        var draft = _newMemoDraft;
+        _newMemoDraft = string.Empty;
+        _markdownEditor.BeginNew(draft);
+        UpdateEditVisual();
+    }
+
+    private void SetDisplayedMemo(MemoItem? memo) {
+        if (ReferenceEquals(_displayedMemo, memo)) return;
+        if (_displayedMemo != null) _displayedMemo.PropertyChanged -= OnDisplayedMemoChanged;
+        _displayedMemo = memo;
+        if (_displayedMemo != null) _displayedMemo.PropertyChanged += OnDisplayedMemoChanged;
+    }
+
+    private void OnDisplayedMemoChanged(object? sender, PropertyChangedEventArgs e) {
+        if (e.PropertyName == nameof(MemoItem.Content) && sender is MemoItem memo)
+            _markdownEditor.SetExternalMarkdown(memo.Content);
+    }
+
+    private async void OnMemoDoubleTapped(object? sender, RoutedEventArgs e) {
         var item = FindMemoItemFromSource(e.Source);
         if (item == null) return;
-
-        var inputBox = this.FindControl<TextBox>("_inputBox")!;
-        ViewModel.BeginEdit(item.Id);
-        inputBox.Text = item.Content;
-        inputBox.Focus();
-        inputBox.CaretIndex = inputBox.Text?.Length ?? 0;
-        UpdateEditVisual();
+        await BeginMemoEditAsync(item);
     }
 
     /// <summary>
@@ -298,7 +327,16 @@ public partial class MainWindow : Window {
         var vm = ViewModel;
         bool wasEditing = vm.EditingId == item.Id;
         vm.DeleteItem(item.Id); // ViewModel 内部清空 EditingId
-        if (wasEditing) { /* R7：编辑中删除不清空输入框 */ }
+        HandleDeletedEditingMemo(item, wasEditing);
+        UpdateEditVisual();
+    }
+
+    private void HandleDeletedEditingMemo(MemoItem item, bool wasEditing) {
+        if (!wasEditing || !ReferenceEquals(_displayedMemo, item)) return;
+        MemoEditCoordinator.Shared.Release(item.Id, this);
+        var draft = _markdownEditor.Markdown;
+        SetDisplayedMemo(null);
+        _markdownEditor.BeginNew(draft);
         UpdateEditVisual();
     }
 
@@ -361,7 +399,7 @@ public partial class MainWindow : Window {
         bool wasEditing = vm.EditingId == item.Id;
         vm.DeleteItem(item.Id);
         UpdateEditVisual();
-        if (wasEditing) { /* R7 */ }
+        HandleDeletedEditingMemo(item, wasEditing);
         if (exitVisual != null) StartDeleteExitAnimation(exitVisual);
 
         // 2. 等下一次布局完成后，再给下方项施加反向偏移并启动滑动动画
@@ -551,6 +589,10 @@ public partial class MainWindow : Window {
     }
 
     private void OnMainWindowClosed(object? sender, EventArgs e) {
+        if (_displayedMemo != null) {
+            _displayedMemo.PropertyChanged -= OnDisplayedMemoChanged;
+            MemoEditCoordinator.Shared.Release(_displayedMemo.Id, this);
+        }
         _windowTransition?.Cancel();
         StopDeleteAnimation();
         ClearDeleteExitVisuals();

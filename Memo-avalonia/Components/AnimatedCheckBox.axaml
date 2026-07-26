@@ -1,0 +1,179 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:Memo.Components">
+  <Style Selector="local|AnimatedCheckBox">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="FocusAdorner" Value="{x:Null}"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="MinHeight" Value="44"/>
+    <Setter Property="Padding" Value="0,3"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border x:Name="PART_Row"
+                MinHeight="{TemplateBinding MinHeight}"
+                Padding="{TemplateBinding Padding}"
+                Background="{TemplateBinding Background}">
+          <Grid ColumnDefinitions="*,Auto">
+            <ContentPresenter Grid.Column="0"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+
+            <Grid Grid.Column="1"
+                  Width="28"
+                  Height="28"
+                  Margin="16,0,0,0"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center">
+              <Border x:Name="PART_FocusCue"
+                      Width="26"
+                      Height="26"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Background="Transparent"
+                      BorderBrush="{StaticResource BorderFocusBrush}"
+                      BorderThickness="1"
+                      CornerRadius="8"
+                      BoxShadow="0 0 0 2 #22C97B5A"
+                      IsHitTestVisible="False"
+                      Opacity="0">
+                <Border.Transitions>
+                  <Transitions>
+                    <DoubleTransition Property="Opacity"
+                                      Duration="{DynamicResource MotionFastDuration}"
+                                      Easing="CubicEaseOut"/>
+                  </Transitions>
+                </Border.Transitions>
+              </Border>
+
+              <Border x:Name="PART_Indicator"
+                      Width="20"
+                      Height="20"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Background="{StaticResource BgSecondaryBrush}"
+                      BorderBrush="{StaticResource BorderDefaultBrush}"
+                      BorderThickness="1"
+                      CornerRadius="6"
+                      RenderTransform="scale(1)"
+                      RenderTransformOrigin="50%,50%">
+                <Border.Transitions>
+                  <Transitions>
+                    <BrushTransition Property="Background"
+                                     Duration="{DynamicResource MotionStandardDuration}"
+                                     Easing="CubicEaseOut"/>
+                    <BrushTransition Property="BorderBrush"
+                                     Duration="{DynamicResource MotionFastDuration}"
+                                     Easing="CubicEaseOut"/>
+                    <TransformOperationsTransition Property="RenderTransform"
+                                                   Duration="{DynamicResource MotionFastDuration}"
+                                                   Easing="CubicEaseOut"/>
+                  </Transitions>
+                </Border.Transitions>
+
+                <Grid>
+                  <PathIcon x:Name="PART_CheckMark"
+                            Width="14"
+                            Height="14"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Data="M1.5,7.5 L3.1,5.9 L5.8,8.6 L11.2,3.2 L12.8,4.8 L5.8,11.8 Z"
+                            Foreground="White"
+                            IsHitTestVisible="False"
+                            Opacity="0"
+                            RenderTransform="scale(0.65)"
+                            RenderTransformOrigin="50%,50%">
+                    <PathIcon.Transitions>
+                      <Transitions>
+                        <DoubleTransition Property="Opacity"
+                                          Duration="{DynamicResource MotionStandardDuration}"
+                                          Easing="CubicEaseOut"/>
+                        <TransformOperationsTransition Property="RenderTransform"
+                                                       Duration="{DynamicResource MotionStandardDuration}"
+                                                       Easing="CubicEaseOut"/>
+                      </Transitions>
+                    </PathIcon.Transitions>
+                  </PathIcon>
+
+                  <Border x:Name="PART_IndeterminateMark"
+                          Width="10"
+                          Height="2"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          Background="White"
+                          CornerRadius="1"
+                          IsHitTestVisible="False"
+                          Opacity="0"
+                          RenderTransform="scale(0.65)"
+                          RenderTransformOrigin="50%,50%">
+                    <Border.Transitions>
+                      <Transitions>
+                        <DoubleTransition Property="Opacity"
+                                          Duration="{DynamicResource MotionStandardDuration}"
+                                          Easing="CubicEaseOut"/>
+                        <TransformOperationsTransition Property="RenderTransform"
+                                                       Duration="{DynamicResource MotionStandardDuration}"
+                                                       Easing="CubicEaseOut"/>
+                      </Transitions>
+                    </Border.Transitions>
+                  </Border>
+                </Grid>
+              </Border>
+            </Grid>
+          </Grid>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+
+  <Style Selector="local|AnimatedCheckBox:pointerover /template/ Border#PART_Indicator">
+    <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}"/>
+    <Setter Property="RenderTransform" Value="scale(1.04)"/>
+  </Style>
+  <Style Selector="local|AnimatedCheckBox:pressed /template/ Border#PART_Indicator">
+    <Setter Property="RenderTransform" Value="scale(0.96)"/>
+  </Style>
+  <Style Selector="local|AnimatedCheckBox:focus-visible /template/ Border#PART_FocusCue">
+    <Setter Property="Opacity" Value="1"/>
+  </Style>
+
+  <Style Selector="local|AnimatedCheckBox:checked /template/ Border#PART_Indicator">
+    <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}"/>
+  </Style>
+  <Style Selector="local|AnimatedCheckBox:checked:pointerover /template/ Border#PART_Indicator">
+    <Setter Property="Background" Value="{StaticResource AccentHoverBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource AccentHoverBrush}"/>
+  </Style>
+  <Style Selector="local|AnimatedCheckBox:checked:pressed /template/ Border#PART_Indicator">
+    <Setter Property="Background" Value="{StaticResource AccentPressedBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource AccentPressedBrush}"/>
+  </Style>
+  <Style Selector="local|AnimatedCheckBox:checked /template/ PathIcon#PART_CheckMark">
+    <Setter Property="Opacity" Value="1"/>
+    <Setter Property="RenderTransform" Value="scale(1)"/>
+  </Style>
+
+  <Style Selector="local|AnimatedCheckBox:indeterminate /template/ Border#PART_Indicator">
+    <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}"/>
+  </Style>
+  <Style Selector="local|AnimatedCheckBox:indeterminate:pointerover /template/ Border#PART_Indicator">
+    <Setter Property="Background" Value="{StaticResource AccentHoverBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource AccentHoverBrush}"/>
+  </Style>
+  <Style Selector="local|AnimatedCheckBox:indeterminate /template/ Border#PART_IndeterminateMark">
+    <Setter Property="Opacity" Value="1"/>
+    <Setter Property="RenderTransform" Value="scale(1)"/>
+  </Style>
+
+  <Style Selector="local|AnimatedCheckBox:disabled">
+    <Setter Property="Cursor" Value="Arrow"/>
+    <Setter Property="Opacity" Value="0.5"/>
+  </Style>
+</Styles>

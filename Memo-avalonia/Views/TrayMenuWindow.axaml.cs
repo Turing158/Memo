@@ -36,10 +36,10 @@ public partial class TrayMenuWindow : Window {
         UpdatePinStatus();
     }
 
-    public void ShowNearTray(Window owner) {
+    public void ShowNearPointer(Window owner) {
         if (_mainWindow == null) return;
 
-        PositionNearTray(owner);
+        PositionNearPointer(owner);
         Topmost = true;
         Show();
         Activate();
@@ -47,8 +47,8 @@ public partial class TrayMenuWindow : Window {
         Dispatcher.UIThread.Post(BringAboveTrayFlyout, DispatcherPriority.Render);
     }
 
-    private void PositionNearTray(Window owner) {
-        // 优先使用鼠标当前位置来确定屏幕和定位，这样菜单会显示在托盘图标附近
+    private void PositionNearPointer(Window owner) {
+        // 优先使用鼠标当前位置来确定屏幕和定位。
         if (GetCursorPos(out var cursor)) {
             var pixelCursor = new PixelPoint(cursor.X, cursor.Y);
             var screen = owner.Screens.ScreenFromPoint(pixelCursor)
@@ -60,7 +60,7 @@ public partial class TrayMenuWindow : Window {
             }
         }
 
-        // 回退：使用 owner 所在屏幕的右下角
+        // 回退：使用 owner 所在屏幕的右下角。
         var fallbackScreen = owner.Screens.ScreenFromWindow(owner) ?? owner.Screens.Primary;
         if (fallbackScreen == null) return;
 
@@ -75,8 +75,7 @@ public partial class TrayMenuWindow : Window {
         var area = screen.WorkingArea;
         const int margin = 4;
 
-        // 菜单左下角对齐到托盘图标右下角（用鼠标位置近似）
-        // 即：菜单 X = 鼠标 X（左边缘对齐），菜单 Y = 鼠标 Y - 菜单高度（底边缘对齐）
+        // 菜单左边缘对齐鼠标 X，底边缘对齐鼠标 Y。
         var x = cursor.X;
         var y = cursor.Y - (int)Height;
 
@@ -113,8 +112,7 @@ public partial class TrayMenuWindow : Window {
         if (_mainWindow == null) return;
 
         Hide();
-        App.RestoreWindow(_mainWindow);
-        _mainWindow.FocusInputForNewMemo();
+        _mainWindow.ShowExpandedWithTransition(focusInput: true);
     }
 
     private void OnPinClick(object? sender, RoutedEventArgs e) {

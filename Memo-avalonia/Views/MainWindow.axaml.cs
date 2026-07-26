@@ -8,15 +8,16 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Memo.Behaviors;
 using Memo.Models;
+using Memo.UI;
 using Memo.Utils;
 using Memo.ViewModels;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
@@ -50,28 +51,34 @@ public partial class MainWindow : Window {
     private AppSettings _settings = AppSettings.CreateDefault();
     private Action? _openSettings;
     private Action? _exitApplication;
+    private Action? _showSharedMenu;
     private Func<Task<CloseButtonAction?>>? _askCloseButtonAction;
     public event Action<MemoItem, PixelPoint>? MemoPopoutRequested;
 
-    // 删除滑动动画的状态
-    private DispatcherTimer? _deleteSlideTimer;
-    private bool _isAnimatingDelete;
+    private FrameAnimation? _deleteSlideAnimation;
+    private readonly List<(Control Control, TranslateTransform Transform)> _deleteSlideEntries = new();
+    private int _deleteRequestVersion;
+    private readonly List<DeleteExitVisual> _deleteExitVisuals = new();
+    private WindowTransitionController? _windowTransition;
 
-    // 窗口显示/隐藏过渡动画状态
-    private DispatcherTimer? _windowTransitionTimer;
-    private bool _isWindowTransitioning;
+    private sealed class DeleteExitVisual {
+        public required Canvas Layer { get; init; }
+        public required Image Image { get; init; }
+        public required ScaleTransform Scale { get; init; }
+        public required RenderTargetBitmap Bitmap { get; init; }
+        public FrameAnimation? Animation { get; set; }
+    }
 
     // 长按拖拽重排管理器
     private DragReorderManager? _dragManager;
 
     public MainWindow() {
         InitializeComponent();
+        _windowTransition = new WindowTransitionController(this, this.FindControl<Border>("_windowShell")!);
+        InitializeDockingInteraction();
         PrepareWindowOpenState();
         // 等可视化树就绪后再给手柄赋值光标（Load 时 visual tree 才真正存在）
         Loaded += (_, _) => AssignResizeHandleCursors();
-
-        // 为置顶按钮的旋转图标添加角度过渡动画
-        SetupPinRotationTransition();
 
         var inputBox = this.FindControl<TextBox>("_inputBox")!;
         var list = this.FindControl<ItemsControl>("_memoList")!;
@@ -82,6 +89,7 @@ public partial class MainWindow : Window {
         _dragManager = new DragReorderManager(list, scroller, dragLayer, ViewModel,
             (memo, position) => MemoPopoutRequested?.Invoke(memo, position));
         _dragManager.Attach();
+        Closed += OnMainWindowClosed;
 
         // Enter 提交 / Shift+Enter 换行
         inputBox.KeyDown += InputBox_KeyDown;
@@ -109,8 +117,14 @@ public partial class MainWindow : Window {
         _askCloseButtonAction = askCloseButtonAction;
     }
 
+    internal void ConfigureSharedMenu(Action showSharedMenu) {
+        _showSharedMenu = showSharedMenu;
+    }
+
     public void ApplySettings(AppSettings settings) {
         _settings = settings;
+        ApplyDockEnabledSetting(settings.MainWindowDockEnabled);
+        ApplyDockSizeSetting(settings.MainWindowDockSize);
     }
 
     public void FocusInputForNewMemo() {
@@ -121,12 +135,8 @@ public partial class MainWindow : Window {
         inputBox.CaretIndex = inputBox.Text?.Length ?? 0;
     }
 
-    public void ShowOnStartup() {
-        ShowWithOpenTransition(force: true);
-    }
-
     public void ShowWithTransition() {
-        ShowWithOpenTransition(force: false);
+        ShowExpandedWithTransition();
     }
 
     private void ShowWithOpenTransition(bool force) {
@@ -136,7 +146,7 @@ public partial class MainWindow : Window {
             return;
         }
 
-        PrepareWindowOpenState();
+        if (!IsVisible) PrepareWindowOpenState();
         WindowState = WindowState.Normal;
         ShowInTaskbar = false;
         Show();
@@ -145,17 +155,7 @@ public partial class MainWindow : Window {
     }
 
     public void HideToTrayWithTransition() {
-        if (_isWindowTransitioning) return;
-
-        PlayWindowTransition(
-            duration: TimeSpan.FromMilliseconds(160),
-            fromOpacity: Opacity,
-            toOpacity: 0,
-            fromScale: CurrentShellScale(),
-            toScale: 0.985,
-            easing: new CubicEaseIn(),
-            completed: () =>
-            {
+        _windowTransition?.CloseAfterTransition(() => {
                 Hide();
                 WindowState = WindowState.Normal;
                 ShowInTaskbar = false;
@@ -164,70 +164,11 @@ public partial class MainWindow : Window {
     }
 
     private void PrepareWindowOpenState() {
-        Opacity = 0;
-        SetShellScale(0.97);
+        _windowTransition?.PrepareOpen();
     }
 
     private void PlayOpenTransition() {
-        PlayWindowTransition(
-            duration: TimeSpan.FromMilliseconds(190),
-            fromOpacity: Opacity,
-            toOpacity: 1,
-            fromScale: CurrentShellScale(),
-            toScale: 1,
-            easing: new CubicEaseOut(),
-            completed: null);
-    }
-
-    private void PlayWindowTransition(
-        TimeSpan duration,
-        double fromOpacity,
-        double toOpacity,
-        double fromScale,
-        double toScale,
-        IEasing easing,
-        Action? completed)
-    {
-        _windowTransitionTimer?.Stop();
-        _isWindowTransitioning = true;
-
-        var sw = Stopwatch.StartNew();
-        Opacity = fromOpacity;
-        SetShellScale(fromScale);
-
-        var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(16), DispatcherPriority.Render, (_, _) => { });
-        timer.Tick += (_, _) => {
-            var t = sw.Elapsed >= duration ? 1.0 : sw.Elapsed.TotalMilliseconds / duration.TotalMilliseconds;
-            var eased = easing.Ease(t);
-
-            Opacity = fromOpacity + ((toOpacity - fromOpacity) * eased);
-            SetShellScale(fromScale + ((toScale - fromScale) * eased));
-
-            if (t >= 1.0) {
-                timer.Stop();
-                Opacity = toOpacity;
-                SetShellScale(toScale);
-                _windowTransitionTimer = null;
-                _isWindowTransitioning = false;
-                completed?.Invoke();
-            }
-        };
-
-        _windowTransitionTimer = timer;
-        timer.Start();
-    }
-
-    private double CurrentShellScale() {
-        var shell = this.FindControl<Border>("_windowShell");
-        return shell?.RenderTransform is ScaleTransform scale ? scale.ScaleX : 1;
-    }
-
-    private void SetShellScale(double value) {
-        var shell = this.FindControl<Border>("_windowShell");
-        if (shell?.RenderTransform is ScaleTransform scale) {
-            scale.ScaleX = value;
-            scale.ScaleY = value;
-        }
+        _windowTransition?.PlayOpen();
     }
 
     // —— 键盘处理 ——
@@ -312,8 +253,8 @@ public partial class MainWindow : Window {
 
     // —— 标题栏拖拽移动窗口 ——
     private void _titleBarDrag_PointerPressed(object? sender, PointerPressedEventArgs e) {
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-            BeginMoveDrag(e);
+        if (sender is Border titleBar)
+            BeginTitleBarDrag(titleBar, e);
     }
 
     // —— 边缘/四角拖拽缩放窗口 ——
@@ -343,12 +284,6 @@ public partial class MainWindow : Window {
     private void OnDeleteClick(object? sender, RoutedEventArgs e) {
         var item = FindMemoItemFromSource(sender);
         if (item == null) return;
-
-        // 如果上一次删除动画还没结束，本次直接走无动画路径，避免计时器冲突
-        if (_isAnimatingDelete) {
-            DeleteItemImmediate(item);
-            return;
-        }
 
         // 尝试走滑动动画路径；若测量失败则回退到无动画删除
         if (!TryAnimateDelete(item)) {
@@ -404,96 +339,165 @@ public partial class MainWindow : Window {
 
         var index = vm.Memos.IndexOf(item);
         if (index < 0) return false;
-        if (index >= vm.Memos.Count - 1) return false; // 已是末项，无下方项需要滑动
 
-        // 找到被删项和第一个下方项的容器
-        var deletedContainer = FindContainerForMemo(list, item);
-        var nextContainer = FindContainerForMemo(list, vm.Memos[index + 1]);
-        if (deletedContainer == null || nextContainer == null) return false;
+        var containerToDelete = FindContainerForMemo(list, item);
+        var exitVisual = TryCreateDeleteExitVisual(containerToDelete);
 
-        // 测量两项之间的纵向距离（= 被删卡片高度 + margin）
-        // 用 TranslatePoint 把容器原点转到 ItemsControl 的坐标系
-        var ptDeleted = deletedContainer.TranslatePoint(new Point(0, 0), list);
-        var ptNext = nextContainer.TranslatePoint(new Point(0, 0), list);
-        if (ptDeleted == null || ptNext == null) return false;
+        // FLIP: 删除前记录每个后续项目的真实视觉位置。这样不同高度的卡片、
+        // 以及尚未结束的上一次删除动画都能从当前画面连续接管。
+        var oldPositions = new List<(MemoItem Memo, double Y)>();
+        for (var i = index + 1; i < vm.Memos.Count; i++) {
+            var memo = vm.Memos[i];
+            var container = FindContainerForMemo(list, memo);
+            var point = container?.TranslatePoint(new Point(0, 0), list);
+            if (point.HasValue) oldPositions.Add((memo, point.Value.Y));
+        }
+        if (oldPositions.Count == 0 && exitVisual == null) return false;
 
-        double slideDistance = ptNext.Value.Y - ptDeleted.Value.Y;
-        if (slideDistance <= 0) return false;
-
-        // 收集需要滑动的所有下方项
-        var itemsBelow = new List<MemoItem>();
-        for (int i = index + 1; i < vm.Memos.Count; i++)
-            itemsBelow.Add(vm.Memos[i]);
+        StopDeleteAnimation();
+        var requestVersion = ++_deleteRequestVersion;
 
         // 1. 先执行真正的删除 → 布局瞬间刷新，下方项跳到新位置
         bool wasEditing = vm.EditingId == item.Id;
         vm.DeleteItem(item.Id);
         UpdateEditVisual();
         if (wasEditing) { /* R7 */ }
+        if (exitVisual != null) StartDeleteExitAnimation(exitVisual);
 
         // 2. 等下一次布局完成后，再给下方项施加反向偏移并启动滑动动画
         //    用 DispatcherPriority.Render 可确保在布局提交之后、绘制之前执行
-        Dispatcher.UIThread.Post(() => {
-            StartSlideAnimation(list, itemsBelow, slideDistance);
-        }, DispatcherPriority.Render);
+        if (oldPositions.Count > 0) {
+            Dispatcher.UIThread.Post(() => {
+                if (requestVersion != _deleteRequestVersion) return;
+                StartFlipDeleteAnimation(list, oldPositions, requestVersion);
+            }, DispatcherPriority.Render);
+        }
 
         return true;
     }
 
+    private DeleteExitVisual? TryCreateDeleteExitVisual(Control? container) {
+        if (!MotionPreferences.AnimationsEnabled || container == null) return null;
+        var layer = this.FindControl<Canvas>("_dragFloatingLayer");
+        if (layer == null) return null;
+        var card = container is Border border && border.Classes.Contains("MemoCard")
+            ? border
+            : container.GetVisualDescendants().OfType<Border>()
+                .FirstOrDefault(candidate => candidate.Classes.Contains("MemoCard"));
+        if (card == null || card.Bounds.Width < 1 || card.Bounds.Height < 1) return null;
+        var position = card.TranslatePoint(new Point(0, 0), layer);
+        if (!position.HasValue) return null;
+
+        try {
+            var scaling = Math.Max(0.01, RenderScaling);
+            var pixelSize = new PixelSize(
+                Math.Max(1, (int)Math.Ceiling(card.Bounds.Width * scaling)),
+                Math.Max(1, (int)Math.Ceiling(card.Bounds.Height * scaling)));
+            var bitmap = new RenderTargetBitmap(pixelSize, new Vector(96 * scaling, 96 * scaling));
+            bitmap.Render(card);
+            var scale = new ScaleTransform(1, 1);
+            var image = new Image {
+                Source = bitmap,
+                Width = card.Bounds.Width,
+                Height = card.Bounds.Height,
+                Stretch = Stretch.Fill,
+                IsHitTestVisible = false,
+                RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative),
+                RenderTransform = scale,
+            };
+            Canvas.SetLeft(image, position.Value.X);
+            Canvas.SetTop(image, position.Value.Y);
+            layer.Children.Add(image);
+            return new DeleteExitVisual { Layer = layer, Image = image, Scale = scale, Bitmap = bitmap };
+        }
+        catch (Exception ex) {
+            System.Diagnostics.Debug.WriteLine($"[DeleteAnimation] Snapshot failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    private void StartDeleteExitAnimation(DeleteExitVisual exit) {
+        _deleteExitVisuals.Add(exit);
+        FrameAnimation? animation = null;
+        animation = new FrameAnimation(
+            this,
+            MotionPreferences.Effective(TimeSpan.FromMilliseconds(120)),
+            new CubicEaseOut(),
+            progress => {
+                exit.Image.Opacity = 1 - progress;
+                var scale = 1 - (0.02 * progress);
+                exit.Scale.ScaleX = scale;
+                exit.Scale.ScaleY = scale;
+            },
+            () => {
+                if (!ReferenceEquals(exit.Animation, animation)) return;
+                DisposeDeleteExitVisual(exit);
+            });
+        exit.Animation = animation;
+        animation.Start();
+    }
+
+    private void DisposeDeleteExitVisual(DeleteExitVisual exit) {
+        exit.Animation?.Cancel();
+        exit.Animation = null;
+        exit.Layer.Children.Remove(exit.Image);
+        exit.Image.Source = null;
+        exit.Bitmap.Dispose();
+        _deleteExitVisuals.Remove(exit);
+    }
+
+    private void ClearDeleteExitVisuals() {
+        foreach (var exit in _deleteExitVisuals.ToArray()) DisposeDeleteExitVisual(exit);
+    }
+
     /// <summary>
-    /// 给所有下方项施加 translateY = slideDistance（视觉上回到删除前的位置），
-    /// 然后用 DispatcherTimer 逐帧把偏移插值到 0，实现上滑动画。
+    /// 在新布局首帧绘制前施加反向位移，再用渲染帧时钟归零。
     /// </summary>
-    private void StartSlideAnimation(ItemsControl list, List<MemoItem> itemsBelow, double slideDistance) {
-        // 找到每个下方项当前的容器并施加初始偏移
-        var entries = new List<(Control control, TranslateTransform transform)>();
-        foreach (var memo in itemsBelow)  {
+    private void StartFlipDeleteAnimation(
+        ItemsControl list,
+        List<(MemoItem Memo, double Y)> oldPositions,
+        int requestVersion) {
+        foreach (var (memo, oldY) in oldPositions) {
             var container = FindContainerForMemo(list, memo);
             if (container == null) continue;
+            var newPoint = container.TranslatePoint(new Point(0, 0), list);
+            if (!newPoint.HasValue) continue;
+            var inverse = oldY - newPoint.Value.Y;
+            if (Math.Abs(inverse) < 0.1) continue;
 
-            var tf = new TranslateTransform(0, slideDistance);
+            var tf = new TranslateTransform(0, inverse);
             container.RenderTransform = tf;
-            entries.Add((container, tf));
+            _deleteSlideEntries.Add((container, tf));
         }
 
-        if (entries.Count == 0) return;
+        if (_deleteSlideEntries.Count == 0) return;
 
-        // 启动逐帧动画
-        _deleteSlideTimer?.Stop();
-        _isAnimatingDelete = true;
+        var starts = _deleteSlideEntries.Select(entry => entry.Transform.Y).ToArray();
+        FrameAnimation? animation = null;
+        animation = new FrameAnimation(this, MotionPreferences.StandardDuration, new CubicEaseOut(), progress => {
+            for (var i = 0; i < _deleteSlideEntries.Count; i++)
+                _deleteSlideEntries[i].Transform.Y = starts[i] * (1 - progress);
+        }, () => {
+            if (requestVersion != _deleteRequestVersion || !ReferenceEquals(_deleteSlideAnimation, animation)) return;
+            ClearDeleteTransforms();
+            _deleteSlideAnimation = null;
+        });
+        _deleteSlideAnimation = animation;
+        animation.Start();
+    }
 
-        var duration = TimeSpan.FromMilliseconds(200);
-        var sw = Stopwatch.StartNew();
-        var timer = new DispatcherTimer(
-            TimeSpan.FromMilliseconds(16),
-            DispatcherPriority.Render,
-            (_, _) => { });
+    private void StopDeleteAnimation() {
+        ++_deleteRequestVersion;
+        _deleteSlideAnimation?.Cancel();
+        _deleteSlideAnimation = null;
+        ClearDeleteTransforms();
+    }
 
-        timer.Tick += (_, _) => {
-            var elapsed = sw.Elapsed;
-            double t = elapsed >= duration ? 1.0 : elapsed.TotalSeconds / duration.TotalSeconds;
-            // CubicEaseOut: 1 - (1-t)^3
-            double eased = 1.0 - Math.Pow(1.0 - t, 3.0);
-
-            double offset = slideDistance * (1.0 - eased);
-            foreach (var (_, tf) in entries) {
-                tf.Y = offset;
-            }
-
-            if (t >= 1.0) {
-                timer.Stop();
-                _deleteSlideTimer = null;
-                _isAnimatingDelete = false;
-
-                // 动画结束，清除 RenderTransform 恢复干净状态
-                foreach (var (control, _) in entries) {
-                    control.RenderTransform = null;
-                }
-            }
-        };
-
-        _deleteSlideTimer = timer;
-        timer.Start();
+    private void ClearDeleteTransforms() {
+        foreach (var (control, transform) in _deleteSlideEntries) {
+            if (ReferenceEquals(control.RenderTransform, transform)) control.RenderTransform = null;
+        }
+        _deleteSlideEntries.Clear();
     }
 
     // —— 同步编辑态视觉（设置卡片 Classes.editing） ——
@@ -521,6 +525,12 @@ public partial class MainWindow : Window {
     public void TogglePinned() => SetPinned(!_isPinned);
 
     public void SetPinned(bool isPinned) {
+        SetPinnedCore(isPinned);
+        _settings.MainWindowTopmost = isPinned;
+        PersistRuntimeWindowState();
+    }
+
+    private void SetPinnedCore(bool isPinned) {
         _isPinned = isPinned;
         Topmost = _isPinned;
         UpdatePinButtonVisual();
@@ -534,23 +544,21 @@ public partial class MainWindow : Window {
 
         button.Classes.Set("PinActive", _isPinned);
 
-        if (button.Content is PathIcon pi && pi.RenderTransform is RotateTransform rt) {
-            rt.Angle = _isPinned ? -45 : 0;
+        if (button.Content is PathIcon pi) {
+            var target = _isPinned ? -45 : 0;
+            MotionAnimations.AnimateRotation(pi, this, target, animate: IsVisible);
         }
     }
 
-    private void SetupPinRotationTransition() {
-        // 延迟到可视化树加载完成后再查找元素
-        var button = this.FindControl<Button>("_pinButton");
-        if (button?.Content is PathIcon pi && pi.RenderTransform is RotateTransform rt) {
-            rt.Transitions = new Transitions {
-                new DoubleTransition {
-                    Property = RotateTransform.AngleProperty,
-                    Duration = TimeSpan.FromMilliseconds(250),
-                    Easing = new CubicEaseOut(),
-                }
-            };
-        }
+    private void OnMainWindowClosed(object? sender, EventArgs e) {
+        _windowTransition?.Cancel();
+        StopDeleteAnimation();
+        ClearDeleteExitVisuals();
+        _dragManager?.Dispose();
+        _dragManager = null;
+        DisposeDockingInteraction();
+        if (this.FindControl<Button>("_pinButton")?.Content is PathIcon pinIcon)
+            MotionAnimations.Cancel(pinIcon);
     }
 
     private void OnMinimizeClick(object? sender, RoutedEventArgs e) {

@@ -1,0 +1,123 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Memo.Components.SegmentedSelector"
+             x:Name="_root"
+             Background="Transparent"
+             FocusAdorner="{x:Null}"
+             Focusable="True">
+  <UserControl.Styles>
+    <Style Selector="Border.segment-track">
+      <Setter Property="MinHeight" Value="42"/>
+      <Setter Property="Padding" Value="3"/>
+      <Setter Property="Background" Value="{StaticResource BgSecondaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="11"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="BorderBrush"
+                           Duration="{DynamicResource MotionFastDuration}"
+                           Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.segment-track.focused">
+      <Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/>
+    </Style>
+
+    <Style Selector="Border.focus-cue">
+      <Setter Property="Opacity" Value="0"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="12"/>
+      <Setter Property="BoxShadow" Value="0 0 0 2 #22C97B5A"/>
+      <Setter Property="IsHitTestVisible" Value="False"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity"
+                            Duration="{DynamicResource MotionFastDuration}"
+                            Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.focus-cue.focused">
+      <Setter Property="Opacity" Value="1"/>
+    </Style>
+
+    <Style Selector="Border.selection-indicator">
+      <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="BoxShadow" Value="0 1 2 0 #33C06A48"/>
+      <Setter Property="IsHitTestVisible" Value="False"/>
+    </Style>
+
+    <Style Selector="Border.segment-option">
+      <Setter Property="MinHeight" Value="34"/>
+      <Setter Property="Padding" Value="10,0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background"
+                           Duration="{DynamicResource MotionFastDuration}"
+                           Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.segment-option:pointerover">
+      <Setter Property="Background" Value="{StaticResource BgHoverBrush}"/>
+    </Style>
+    <Style Selector="Border.segment-option.selected:pointerover">
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+
+    <Style Selector="Border.segment-option.pressed">
+      <Setter Property="Background" Value="{StaticResource SurfaceActiveBrush}"/>
+    </Style>
+    <Style Selector="Border.segment-option.selected.pressed">
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="TextBlock.segment-label">
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="HorizontalAlignment" Value="Center"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="TextAlignment" Value="Center"/>
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="RenderTransform" Value="translate(0px, 0px) scale(1)"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Foreground"
+                           Duration="{DynamicResource MotionFastDuration}"
+                           Easing="CubicEaseOut"/>
+          <TransformOperationsTransition Property="RenderTransform"
+                                         Duration="{DynamicResource MotionFastDuration}"
+                                         Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.segment-option:pointerover TextBlock.segment-label">
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+    </Style>
+    <Style Selector="Border.segment-option.pressed TextBlock.segment-label">
+      <Setter Property="RenderTransform" Value="translate(0px, 0.2px) scale(0.985)"/>
+    </Style>
+    <Style Selector="Border.segment-option.selected TextBlock.segment-label">
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid>
+    <Border x:Name="_track" Classes="segment-track">
+      <Grid x:Name="_layoutRoot">
+        <Canvas x:Name="_indicatorLayer" IsHitTestVisible="False">
+          <Border x:Name="_indicator" Classes="selection-indicator"/>
+        </Canvas>
+        <Grid x:Name="_optionsGrid"/>
+      </Grid>
+    </Border>
+    <Border x:Name="_focusCue" Classes="focus-cue" Margin="-1"/>
+  </Grid>
+</UserControl>

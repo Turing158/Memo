@@ -1,9 +1,13 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="using:System"
              x:Class="Memo.App"
              RequestedThemeVariant="Default">
 
   <Application.Resources>
+    <sys:TimeSpan x:Key="MotionFastDuration">0:0:0.15</sys:TimeSpan>
+    <sys:TimeSpan x:Key="MotionStandardDuration">0:0:0.19</sys:TimeSpan>
+    <sys:TimeSpan x:Key="MotionDockDuration">0:0:0.22</sys:TimeSpan>
     <!-- ════════════════════════════════════════════════════════════════
          Warm Liné · 暖色亚麻 设计系统
          ──────────────────────────────────────────────────────────────
@@ -144,6 +148,7 @@
 
   <Application.Styles>
     <FluentTheme />
+    <StyleInclude Source="avares://Memo/Components/AnimatedCheckBox.axaml"/>
 
     <!-- ═══════════════════════════════════════════════
          全局窗口基础样式
@@ -173,7 +178,7 @@
     <Style Selector="Button.TitleBarBtn /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Transitions">
         <Transitions>
-          <BrushTransition Property="Background" Duration="0:0:0.15"/>
+          <BrushTransition Property="Background" Duration="{DynamicResource MotionFastDuration}"/>
         </Transitions>
       </Setter>
     </Style>
@@ -183,7 +188,7 @@
     <Style Selector="Button.TitleBarBtn PathIcon">
       <Setter Property="Transitions">
         <Transitions>
-          <BrushTransition Property="Foreground" Duration="0:0:0.15"/>
+          <BrushTransition Property="Foreground" Duration="{DynamicResource MotionFastDuration}"/>
         </Transitions>
       </Setter>
     </Style>
@@ -198,7 +203,7 @@
     <Style Selector="Button.PinActive /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Transitions">
         <Transitions>
-          <BrushTransition Property="Background" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+          <BrushTransition Property="Background" Duration="{DynamicResource MotionStandardDuration}" Easing="CubicEaseOut"/>
         </Transitions>
       </Setter>
     </Style>
@@ -211,13 +216,6 @@
     <Style Selector="Button.PinActive PathIcon">
       <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}"/>
     </Style>
-    <!-- 置顶按钮激活时图标倾斜 -45° -->
-    <Style Selector="Button.PinActive PathIcon">
-      <Setter Property="RenderTransform">
-        <RotateTransform Angle="-45"/>
-      </Setter>
-    </Style>
-
     <!-- 关闭按钮悬停：变红警示 -->
     <Style Selector="Button.TitleBarBtn.CloseBtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{StaticResource DangerSubtleBrush}"/>
@@ -248,8 +246,8 @@
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Transitions">
         <Transitions>
-          <BrushTransition Property="Background" Duration="0:0:0.18" Easing="CubicEaseOut"/>
-          <BrushTransition Property="BorderBrush" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+          <BrushTransition Property="Background" Duration="{DynamicResource MotionStandardDuration}" Easing="CubicEaseOut"/>
+          <BrushTransition Property="BorderBrush" Duration="{DynamicResource MotionStandardDuration}" Easing="CubicEaseOut"/>
         </Transitions>
       </Setter>
     </Style>
@@ -273,6 +271,14 @@
     </Style>
 
     <!-- 装饰线：悬停时微微提亮 -->
+    <Style Selector="Border.MemoCard Border#_accentBar">
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="{DynamicResource MotionStandardDuration}" Easing="CubicEaseOut"/>
+          <BrushTransition Property="Background" Duration="{DynamicResource MotionFastDuration}"/>
+        </Transitions>
+      </Setter>
+    </Style>
     <Style Selector="Border.MemoCard:pointerover Border#_accentBar">
       <Setter Property="Opacity" Value="0.75"/>
     </Style>
@@ -304,9 +310,9 @@
       <Setter Property="RenderTransformOrigin" Value="0.5%,0.5%"/>
       <Setter Property="Transitions">
         <Transitions>
-          <DoubleTransition Property="Opacity" Duration="0:0:0.20" Easing="CubicEaseOut"/>
-          <BrushTransition Property="Background" Duration="0:0:0.15"/>
-          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15"/>
+          <DoubleTransition Property="Opacity" Duration="{DynamicResource MotionStandardDuration}" Easing="CubicEaseOut"/>
+          <BrushTransition Property="Background" Duration="{DynamicResource MotionFastDuration}"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="{DynamicResource MotionFastDuration}"/>
         </Transitions>
       </Setter>
     </Style>
@@ -315,6 +321,13 @@
     </Style>
     <Style Selector="Button.DeleteBtn:pointerover PathIcon">
       <Setter Property="Foreground" Value="{StaticResource DangerPrimaryBrush}"/>
+    </Style>
+    <Style Selector="Button.DeleteBtn PathIcon">
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Foreground" Duration="{DynamicResource MotionFastDuration}"/>
+        </Transitions>
+      </Setter>
     </Style>
     <Style Selector="Button.DeleteBtn:pressed">
       <Setter Property="RenderTransform" Value="scale(0.92)"/>
@@ -346,7 +359,8 @@
       <Setter Property="CornerRadius" Value="12"/>
       <Setter Property="Transitions">
         <Transitions>
-          <BrushTransition Property="BorderBrush" Duration="0:0:0.20"/>
+          <BrushTransition Property="BorderBrush" Duration="{DynamicResource MotionStandardDuration}"/>
+          <BrushTransition Property="Background" Duration="{DynamicResource MotionStandardDuration}"/>
         </Transitions>
       </Setter>
     </Style>
@@ -373,7 +387,7 @@
       <Setter Property="Padding" Value="0"/>
       <Setter Property="Transitions">
         <Transitions>
-          <BrushTransition Property="Foreground" Duration="0:0:0.15"/>
+          <BrushTransition Property="Foreground" Duration="{DynamicResource MotionFastDuration}"/>
         </Transitions>
       </Setter>
     </Style>

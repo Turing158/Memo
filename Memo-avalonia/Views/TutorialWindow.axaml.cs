@@ -1,5 +1,4 @@
 using Avalonia;
-using Avalonia.Animation;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -24,7 +23,7 @@ public partial class TutorialWindow : Window {
         _transition = new WindowTransitionController(this, this.FindControl<Border>("_popoutShell")!);
         _transition.PrepareOpen();
         Opened += (_, _) => _transition.PlayOpen();
-        SetupPinRotationTransition();
+        Closed += OnWindowClosed;
     }
 
     public TutorialWindow(AppSettings settings)
@@ -85,22 +84,16 @@ public partial class TutorialWindow : Window {
 
         button.Classes.Set("PinActive", _isPinned);
 
-        if (button.Content is PathIcon pi && pi.RenderTransform is RotateTransform rt) {
-            rt.Angle = _isPinned ? -45 : 0;
+        if (button.Content is PathIcon pi) {
+            var target = _isPinned ? -45 : 0;
+            MotionAnimations.AnimateRotation(pi, this, target, animate: IsVisible);
         }
     }
 
-    private void SetupPinRotationTransition() {
-        var button = this.FindControl<Button>("_pinButton");
-        if (button?.Content is PathIcon pi && pi.RenderTransform is RotateTransform rt) {
-            rt.Transitions = new Transitions {
-                new DoubleTransition {
-                    Property = RotateTransform.AngleProperty,
-                    Duration = TimeSpan.FromMilliseconds(250),
-                    Easing = new CubicEaseOut(),
-                }
-            };
-        }
+    private void OnWindowClosed(object? sender, EventArgs e) {
+        _transition.Cancel();
+        if (this.FindControl<Button>("_pinButton")?.Content is PathIcon pinIcon)
+            MotionAnimations.Cancel(pinIcon);
     }
 
     // —— 构建教程内容（只读），快捷键读取用户当前设置 ——

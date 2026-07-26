@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
@@ -18,6 +17,7 @@ namespace Memo.Views;
 public partial class SettingsWindow : Window
 {
     private AppSettings _settings = AppSettings.CreateDefault();
+    private Action<AppSettings> _previewSettings = _ => { };
     private Func<AppSettings, Task> _saveSettingsAsync = _ => Task.CompletedTask;
     private HotkeySetting? _capturingHotkey;
     private Button? _capturingButton;
@@ -29,6 +29,9 @@ public partial class SettingsWindow : Window
     private bool _isClosingAfterTransition;
     private Task _saveChain = Task.CompletedTask;
     private readonly object _saveLock = new();
+    private bool _isApplyingSelectorState;
+    private bool _isApplyingDockSizeState;
+    private bool _isApplyingDockEnabledState;
 
     internal enum HotkeyField { ToggleTopmost, Minimize, ShowWindow, QuickMemo }
 
@@ -43,13 +46,20 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         InitializeComponent();
+        InitializeSegmentedSelectors();
         Loaded += (_, _) => this.AssignResizeCursors();
         _transition = new WindowTransitionController(this, this.FindControl<Border>("_settingsShell")!);
         _transition.PrepareOpen();
         Opened += (_, _) => _transition.PlayOpen();
+        Closed += OnWindowClosed;
+        MotionPreferences.Changed += OnMotionPreferencesChanged;
         KeyDown += OnWindowKeyDown;
         KeyUp += OnWindowKeyUp;
         ApplySettingsToUi();
+
+        var dockSizeSliderInit = this.FindControl<AnimatedSlider>("_dockSizeSlider")!;
+        dockSizeSliderInit.ValueChanged += OnDockSizeValueChanged;
+        dockSizeSliderInit.ValueCommitted += OnDockSizeValueCommitted;
 
         var trayClickToggleInit = this.FindControl<LabeledToggleSwitch>("_trayClickToggle");
         if (trayClickToggleInit != null)
@@ -71,38 +81,62 @@ public partial class SettingsWindow : Window
         qm.PointerPressed += OnHotkeyButtonPointerPressed;
     }
 
-    public SettingsWindow(AppSettings settings, Func<AppSettings, Task> saveSettingsAsync)
+    public SettingsWindow(
+        AppSettings settings,
+        Action<AppSettings> previewSettings,
+        Func<AppSettings, Task> saveSettingsAsync)
         : this()
     {
         _settings = settings.Clone();
+        _previewSettings = previewSettings;
         _saveSettingsAsync = saveSettingsAsync;
         ApplySettingsToUi();
     }
 
     private void ApplySettingsToUi()
     {
-        var minimizeOption = this.FindControl<ToggleButton>("_minimizeToTrayOption")!;
-        var closeOption = this.FindControl<ToggleButton>("_closeAppOption")!;
-        minimizeOption.IsChecked = _settings.CloseButtonAction == CloseButtonAction.MinimizeToTray;
-        closeOption.IsChecked = _settings.CloseButtonAction == CloseButtonAction.Close;
+        _isApplyingSelectorState = true;
+        try
+        {
+            this.FindControl<SegmentedSelector>("_closeActionSelector")!.SelectedKey =
+                _settings.CloseButtonAction.ToString();
+            this.FindControl<SegmentedSelector>("_motionSelector")!.SelectedKey =
+                _settings.MotionMode.ToString();
+        }
+        finally
+        {
+            _isApplyingSelectorState = false;
+        }
 
-        var enabledCheckBox = this.FindControl<CheckBox>("_quickMemoEnabledCheckBox");
+        var enabledCheckBox = this.FindControl<AnimatedCheckBox>("_quickMemoEnabledCheckBox");
         if (enabledCheckBox != null)
         {
             enabledCheckBox.IsChecked = _settings.QuickMemoEnabled;
         }
 
-        var duplicateCheckBox = this.FindControl<CheckBox>("_duplicateMemoCheckBox");
+        var duplicateCheckBox = this.FindControl<AnimatedCheckBox>("_duplicateMemoCheckBox");
         if (duplicateCheckBox != null)
         {
             duplicateCheckBox.IsChecked = _settings.DuplicateMemoEnabled;
         }
 
-        var showPopoutCheckBox = this.FindControl<CheckBox>("_quickMemoShowPopoutAfterAddCheckBox");
+        var showPopoutCheckBox = this.FindControl<AnimatedCheckBox>("_quickMemoShowPopoutAfterAddCheckBox");
         if (showPopoutCheckBox != null)
         {
             showPopoutCheckBox.IsChecked = _settings.QuickMemoShowPopoutAfterAdd;
         }
+
+        _isApplyingDockEnabledState = true;
+        try
+        {
+            this.FindControl<AnimatedCheckBox>("_dockEnabledCheckBox")!.IsChecked =
+                _settings.MainWindowDockEnabled;
+        }
+        finally
+        {
+            _isApplyingDockEnabledState = false;
+        }
+        UpdateDockDependentUi();
 
         var trayClickToggle = this.FindControl<LabeledToggleSwitch>("_trayClickToggle");
         if (trayClickToggle != null)
@@ -110,31 +144,142 @@ public partial class SettingsWindow : Window
             trayClickToggle.Value = !_settings.TraySingleClickToShow;
         }
 
+        _settings.MainWindowDockSize = Math.Clamp(
+            _settings.MainWindowDockSize,
+            AppSettings.MinimumMainWindowDockSize,
+            AppSettings.MaximumMainWindowDockSize);
+        _isApplyingDockSizeState = true;
+        try
+        {
+            this.FindControl<AnimatedSlider>("_dockSizeSlider")!.Value = _settings.MainWindowDockSize;
+        }
+        finally
+        {
+            _isApplyingDockSizeState = false;
+        }
+
         UpdateHotkeyButtons();
         UpdateQuickMemoDependentUi();
+        UpdateMotionUi();
+    }
+
+    private void UpdateMotionUi()
+    {
+        _isApplyingSelectorState = true;
+        try
+        {
+            this.FindControl<SegmentedSelector>("_motionSelector")!.SelectedKey =
+                _settings.MotionMode.ToString();
+        }
+        finally
+        {
+            _isApplyingSelectorState = false;
+        }
+
+        var status = this.FindControl<TextBlock>("_motionSystemStatus")!;
+        status.Text = MotionPreferences.SystemAnimationsEnabled
+            ? "系统当前已开启动画"
+            : "系统当前已减少动画";
+        this.FindControl<CollapsibleSection>("_motionSystemStatusSection")!.IsExpanded =
+            _settings.MotionMode == MotionMode.FollowSystem;
+    }
+
+    private void SetMotionMode(MotionMode mode)
+    {
+        if (_settings.MotionMode == mode)
+        {
+            UpdateMotionUi();
+            return;
+        }
+        _settings.MotionMode = mode;
+        MotionPreferences.ApplyMode(mode);
+        UpdateMotionUi();
+        AutoSave();
+    }
+
+    private void OnMotionPreferencesChanged(object? sender, EventArgs e) => UpdateMotionUi();
+
+    private void OnDockSizeValueChanged(object? sender, SliderValueChangedEventArgs e)
+    {
+        if (_isApplyingDockSizeState || _settings.MainWindowDockSize == e.NewValue) return;
+        _settings.MainWindowDockSize = e.NewValue;
+        _previewSettings(_settings.Clone());
+    }
+
+    private void OnDockSizeValueCommitted(object? sender, SliderValueChangedEventArgs e)
+    {
+        if (_isApplyingDockSizeState) return;
+        _settings.MainWindowDockSize = e.NewValue;
+        AutoSave();
+    }
+
+    private void InitializeSegmentedSelectors()
+    {
+        var closeActionSelector = this.FindControl<SegmentedSelector>("_closeActionSelector")!;
+        closeActionSelector.Options = new[]
+        {
+            new SegmentedSelectorOption(nameof(CloseButtonAction.MinimizeToTray), "最小化托盘"),
+            new SegmentedSelectorOption(nameof(CloseButtonAction.Close), "关闭"),
+        };
+        closeActionSelector.SelectionChanged += OnCloseActionSelectionChanged;
+
+        var motionSelector = this.FindControl<SegmentedSelector>("_motionSelector")!;
+        motionSelector.Options = new[]
+        {
+            new SegmentedSelectorOption(nameof(MotionMode.FollowSystem), "跟随系统"),
+            new SegmentedSelectorOption(nameof(MotionMode.AlwaysOn), "始终开启"),
+            new SegmentedSelectorOption(nameof(MotionMode.Off), "关闭"),
+        };
+        motionSelector.SelectionChanged += OnMotionSelectionChanged;
+    }
+
+    private void OnCloseActionSelectionChanged(object? sender, SegmentedSelectionChangedEventArgs e)
+    {
+        if (_isApplyingSelectorState
+            || !Enum.TryParse<CloseButtonAction>(e.NewKey, out var action)
+            || _settings.CloseButtonAction == action) return;
+
+        _settings.CloseButtonAction = action;
+        _settings.HasAskedCloseButtonAction = true;
+        AutoSave();
+    }
+
+    private void OnMotionSelectionChanged(object? sender, SegmentedSelectionChangedEventArgs e)
+    {
+        if (_isApplyingSelectorState || !Enum.TryParse<MotionMode>(e.NewKey, out var mode)) return;
+        SetMotionMode(mode);
+    }
+
+    private void OnWindowClosed(object? sender, EventArgs e)
+    {
+        MotionPreferences.Changed -= OnMotionPreferencesChanged;
+        _transition?.Cancel();
     }
 
     // 自动保存：把当前 _settings 串行地落盘并生效（apply + 持久化），
     // 避免快速连续编辑产生并发写。失败时弹窗提示用户。
     private void AutoSave()
     {
+        var snapshot = _settings.Clone();
         lock (_saveLock)
         {
-            var fireAndForget = _saveChain.ContinueWith(t =>
-            {
-                try
-                {
-                    var clone = _settings.Clone();
-                    // 热键注册必须在创建 NativeWindow 的 UI 线程上执行
-                    Dispatcher.UIThread.InvokeAsync(() => _saveSettingsAsync(clone));
-                }
-                catch (Exception ex)
-                {
-                    Dispatcher.UIThread.Post(async () =>
-                        await new ConfirmDialog("保存设置失败", $"无法保存设置：{ex.Message}").ShowDialog(this));
-                }
-            }, TaskScheduler.Default);
-            _saveChain = fireAndForget;
+            _saveChain = _saveChain
+                .ContinueWith(_ => SaveSnapshotAsync(snapshot), TaskScheduler.Default)
+                .Unwrap();
+        }
+    }
+
+    private async Task SaveSnapshotAsync(AppSettings snapshot)
+    {
+        try
+        {
+            // 热键注册和窗口状态复制必须在创建 NativeWindow 的 UI 线程上执行。
+            await Dispatcher.UIThread.InvokeAsync(() => _saveSettingsAsync(snapshot));
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.UIThread.Post(async () =>
+                await new ConfirmDialog("保存设置失败", $"无法保存设置：{ex.Message}").ShowDialog(this));
         }
     }
 
@@ -159,12 +304,19 @@ public partial class SettingsWindow : Window
             button.Opacity = _settings.QuickMemoEnabled ? 1.0 : 0.45;
         }
 
-        var row = this.FindControl<Grid>("_quickMemoShowPopoutAfterAddRow");
-        if (row != null)
+        var section = this.FindControl<CollapsibleSection>("_quickMemoPopoutSection");
+        if (section != null)
         {
-            row.IsVisible = _settings.QuickMemoEnabled;
+            section.IsExpanded = _settings.QuickMemoEnabled;
         }
     }
+
+    private void UpdateDockDependentUi()
+    {
+        var section = this.FindControl<CollapsibleSection>("_dockSizeSection");
+        if (section != null) section.IsExpanded = _settings.MainWindowDockEnabled;
+    }
+
 
     private void StartCapture(HotkeySetting hotkey, Button button)
     {
@@ -321,16 +473,13 @@ public partial class SettingsWindow : Window
         if (text == null) return;
 
         text.Text = message;
-        text.IsVisible = true;
+        this.FindControl<CollapsibleSection>("_hotkeyValidationSection")!.IsExpanded = true;
     }
 
     private void ClearHotkeyValidation()
     {
-        var text = this.FindControl<TextBlock>("_hotkeyValidationText");
-        if (text == null) return;
-
-        text.Text = string.Empty;
-        text.IsVisible = false;
+        // 收起时保留文本，避免内容高度瞬间归零导致收起动画失效；下次显示会覆盖
+        this.FindControl<CollapsibleSection>("_hotkeyValidationSection")!.IsExpanded = false;
     }
 
     private void MarkConflict(Button button)
@@ -479,22 +628,6 @@ public partial class SettingsWindow : Window
         };
     }
 
-    private void OnMinimizeToTrayOptionClick(object? sender, RoutedEventArgs e)
-    {
-        _settings.CloseButtonAction = CloseButtonAction.MinimizeToTray;
-        _settings.HasAskedCloseButtonAction = true;
-        ApplySettingsToUi();
-        AutoSave();
-    }
-
-    private void OnCloseAppOptionClick(object? sender, RoutedEventArgs e)
-    {
-        _settings.CloseButtonAction = CloseButtonAction.Close;
-        _settings.HasAskedCloseButtonAction = true;
-        ApplySettingsToUi();
-        AutoSave();
-    }
-
     private void OnToggleTopmostHotkeyClick(object? sender, RoutedEventArgs e)
     {
         StartCapture(_settings.ToggleTopmostHotkey, (Button)sender!);
@@ -554,6 +687,27 @@ public partial class SettingsWindow : Window
         EndCapture();
     }
 
+    private void OnDockEnabledChecked(object? sender, RoutedEventArgs e) =>
+        SetDockEnabled(true);
+
+    private void OnDockEnabledUnchecked(object? sender, RoutedEventArgs e) =>
+        SetDockEnabled(false);
+
+    private void SetDockEnabled(bool enabled)
+    {
+        if (_isApplyingDockEnabledState) return;
+        if (_settings.MainWindowDockEnabled == enabled)
+        {
+            UpdateDockDependentUi();
+            return;
+        }
+
+        _settings.MainWindowDockEnabled = enabled;
+        UpdateDockDependentUi();
+        _previewSettings(_settings.Clone());
+        AutoSave();
+    }
+
     private void OnQuickMemoEnabledChecked(object? sender, RoutedEventArgs e)
     {
         _settings.QuickMemoEnabled = true;
@@ -597,6 +751,10 @@ public partial class SettingsWindow : Window
         _settings.DuplicateMemoEnabled = defaults.DuplicateMemoEnabled;
         _settings.TraySingleClickToShow = defaults.TraySingleClickToShow;
         _settings.QuickMemoShowPopoutAfterAdd = defaults.QuickMemoShowPopoutAfterAdd;
+        _settings.MotionMode = defaults.MotionMode;
+        _settings.MainWindowDockEnabled = defaults.MainWindowDockEnabled;
+        _settings.MainWindowDockSize = defaults.MainWindowDockSize;
+        MotionPreferences.ApplyMode(_settings.MotionMode);
         ApplySettingsToUi();
         AutoSave();
     }

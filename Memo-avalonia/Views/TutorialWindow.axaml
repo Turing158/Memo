@@ -23,8 +23,8 @@
       <Setter Property="Padding" Value="12.5"/>
       <Setter Property="Transitions">
         <Transitions>
-          <BrushTransition Property="BorderBrush" Duration="0:0:0.18" Easing="CubicEaseOut"/>
-          <BrushTransition Property="Background" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+          <BrushTransition Property="BorderBrush" Duration="{DynamicResource MotionStandardDuration}" Easing="CubicEaseOut"/>
+          <BrushTransition Property="Background" Duration="{DynamicResource MotionStandardDuration}" Easing="CubicEaseOut"/>
         </Transitions>
       </Setter>
     </Style>

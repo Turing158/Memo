@@ -24,7 +24,7 @@
     <Style Selector="Button.TrayMenuItem /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Transitions">
         <Transitions>
-          <BrushTransition Property="Background" Duration="0:0:0.12"/>
+          <BrushTransition Property="Background" Duration="{DynamicResource MotionFastDuration}"/>
         </Transitions>
       </Setter>
     </Style>

@@ -2,17 +2,14 @@ using Avalonia;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Media;
-using Avalonia.Threading;
 using System;
-using System.Diagnostics;
 
 namespace Memo.UI;
 
 internal sealed class WindowTransitionController {
     private readonly Window _window;
     private readonly Control _shell;
-    private DispatcherTimer? _timer;
-    private bool _isTransitioning;
+    private FrameAnimation? _animation;
 
     public WindowTransitionController(Window window, Control shell) {
         _window = window;
@@ -20,18 +17,45 @@ internal sealed class WindowTransitionController {
     }
 
     public void PrepareOpen() {
+        Cancel();
+        if (!MotionPreferences.AnimationsEnabled) {
+            _window.Opacity = 1;
+            SetScale(1);
+            return;
+        }
         _window.Opacity = 0;
         SetScale(0.97);
     }
 
-    public void PlayOpen() {
-        Play(TimeSpan.FromMilliseconds(180), _window.Opacity, 1, CurrentScale(), 1, new CubicEaseOut(), null);
+    public bool IsTransitioning => _animation?.IsRunning == true;
+
+    public void PlayOpen(Action? completed = null) {
+        if (!MotionPreferences.AnimationsEnabled) {
+            Reset();
+            completed?.Invoke();
+            return;
+        }
+        Play(MotionPreferences.StandardDuration, _window.Opacity, 1, CurrentScale(), 1, new CubicEaseOut(), completed);
     }
 
     public void CloseAfterTransition(Action close) {
-        if (_isTransitioning) return;
+        if (!MotionPreferences.AnimationsEnabled) {
+            Reset();
+            close();
+            return;
+        }
+        Play(MotionPreferences.FastDuration, _window.Opacity, 0, CurrentScale(), 0.985, new CubicEaseIn(), close);
+    }
 
-        Play(TimeSpan.FromMilliseconds(145), _window.Opacity, 0, CurrentScale(), 0.985, new CubicEaseIn(), close);
+    public void Cancel() {
+        _animation?.Cancel();
+        _animation = null;
+    }
+
+    public void Reset(double opacity = 1, double scale = 1) {
+        Cancel();
+        _window.Opacity = opacity;
+        SetScale(scale);
     }
 
     private void Play(
@@ -42,33 +66,19 @@ internal sealed class WindowTransitionController {
         double toScale,
         IEasing easing,
         Action? completed) {
-        _timer?.Stop();
-        _isTransitioning = true;
+        _animation?.Cancel();
 
-        var sw = Stopwatch.StartNew();
         _window.Opacity = fromOpacity;
         SetScale(fromScale);
 
-        var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(16), DispatcherPriority.Render, (_, _) => { });
-        timer.Tick += (_, _) => {
-            var t = sw.Elapsed >= duration ? 1.0 : sw.Elapsed.TotalMilliseconds / duration.TotalMilliseconds;
-            var eased = easing.Ease(t);
-
-            _window.Opacity = fromOpacity + ((toOpacity - fromOpacity) * eased);
-            SetScale(fromScale + ((toScale - fromScale) * eased));
-
-            if (t >= 1.0) {
-                timer.Stop();
-                _window.Opacity = toOpacity;
-                SetScale(toScale);
-                _timer = null;
-                _isTransitioning = false;
-                completed?.Invoke();
-            }
-        };
-
-        _timer = timer;
-        timer.Start();
+        _animation = new FrameAnimation(_window, duration, easing, progress => {
+            _window.Opacity = fromOpacity + ((toOpacity - fromOpacity) * progress);
+            SetScale(fromScale + ((toScale - fromScale) * progress));
+        }, () => {
+            _animation = null;
+            completed?.Invoke();
+        });
+        _animation.Start();
     }
 
     private double CurrentScale() => _shell.RenderTransform is ScaleTransform scale ? scale.ScaleX : 1;

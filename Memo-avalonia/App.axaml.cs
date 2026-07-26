@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -7,6 +8,7 @@ using Memo.Components.Dialogs;
 using Memo.Models;
 using Memo.Platform.Windows;
 using Memo.Services;
+using Memo.UI;
 using Memo.Views;
 using System;
 using System.Collections.Generic;
@@ -22,6 +24,7 @@ public partial class App : Application{
     private readonly JsonSettingsStorage _settingsStorage = new();
     private readonly List<MemoPopoutWindow> _memoPopouts = new();
     private readonly List<TutorialWindow> _tutorialWindows = new();
+    private readonly Dictionary<Window, FrameAnimation> _positionAnimations = new();
     private AppSettings _settings = AppSettings.CreateDefault();
     private Window? _latestMemoWindow;
     private MainWindow? _mainWindow;
@@ -29,6 +32,7 @@ public partial class App : Application{
 
     public override void Initialize() {
         AvaloniaXamlLoader.Load(this);
+        MotionPreferences.Initialize(this);
     }
 
     public override void OnFrameworkInitializationCompleted() {
@@ -42,21 +46,43 @@ public partial class App : Application{
             mainWindow.MemoPopoutRequested += OpenMemoPopout;
 
             void ExitApplication() {
+                foreach (var animation in _positionAnimations.Values) animation.Cancel();
+                _positionAnimations.Clear();
                 _hotkeyService?.Dispose();
                 _trayIcon?.Dispose();
+                MotionPreferences.Shutdown();
                 desktop.Shutdown();
             }
 
+            desktop.Exit += (_, _) => {
+                foreach (var animation in _positionAnimations.Values) animation.Cancel();
+                _positionAnimations.Clear();
+                MotionPreferences.Shutdown();
+            };
+
             async Task SaveSettingsAsync(AppSettings settings) {
+                mainWindow.CopyRuntimeWindowStateTo(settings);
                 _settings = settings;
+                MotionPreferences.ApplyMode(_settings.MotionMode);
                 mainWindow.ApplySettings(_settings);
                 _hotkeyService?.Apply(_settings, mainWindow, ToggleLatestTopmostTarget, AddQuickMemoFromClipboard);
                 if (_trayIcon != null) _trayIcon.TraySingleClickToShow = _settings.TraySingleClickToShow;
                 await _settingsStorage.SaveAsync(_settings);
             }
 
+            async Task SaveWindowStateAsync(AppSettings settings) {
+                _settings = settings;
+                await _settingsStorage.SaveAsync(_settings);
+            }
+
+            void PreviewSettings(AppSettings settings) {
+                mainWindow.CopyRuntimeWindowStateTo(settings);
+                _settings = settings;
+                mainWindow.ApplySettings(_settings);
+            }
+
             void OpenSettings() {
-                var settingsWindow = new SettingsWindow(_settings, SaveSettingsAsync);
+                var settingsWindow = new SettingsWindow(_settings, PreviewSettings, SaveSettingsAsync);
                 settingsWindow.Topmost = mainWindow.Topmost;
                 settingsWindow.ShowDialog(mainWindow);
             }
@@ -74,34 +100,39 @@ public partial class App : Application{
             }
 
             mainWindow.ConfigureAppActions(_settings, OpenSettings, ExitApplication, AskCloseButtonActionAsync);
+            mainWindow.ConfigureWindowStatePersistence(SaveWindowStateAsync);
 
-            var trayMenu = new TrayMenuWindow(mainWindow, ExitApplication);
-            _trayIcon = new WindowsTrayIcon(
-                () => trayMenu.ShowNearTray(mainWindow),
-                () => RestoreWindow(mainWindow));
-            if (_trayIcon != null) _trayIcon.TraySingleClickToShow = _settings.TraySingleClickToShow;
-
-            _hotkeyService = new GlobalHotkeyService();
-            _hotkeyService.Apply(_settings, mainWindow, ToggleLatestTopmostTarget, AddQuickMemoFromClipboard);
-            _hotkeyService.RestoreRequested += () => Dispatcher.UIThread.Post(() => RestoreWindow(mainWindow));
-
-            // 启动程序必须立即显示主界面，不受上次隐藏状态或设置加载影响。
+            // 等设置加载完成后再首次显示，避免已停靠窗口先闪现完整界面。
             mainWindow.ShowInTaskbar = false;
-            mainWindow.ShowOnStartup();
 
-            _ = LoadSettingsAfterStartupAsync(mainWindow);
+            _ = LoadSettingsAfterStartupAsync(mainWindow, ExitApplication);
         }
 
         base.OnFrameworkInitializationCompleted();
     }
 
-    private async Task LoadSettingsAfterStartupAsync(MainWindow mainWindow) {
+    private async Task LoadSettingsAfterStartupAsync(MainWindow mainWindow, Action exitApplication) {
         var settings = await _settingsStorage.LoadAsync();
         await Dispatcher.UIThread.InvokeAsync(() => {
             _settings = settings;
+            MotionPreferences.ApplyMode(_settings.MotionMode);
             mainWindow.ApplySettings(_settings);
-            _hotkeyService?.Apply(_settings, mainWindow, ToggleLatestTopmostTarget, AddQuickMemoFromClipboard);
-            if (_trayIcon != null) _trayIcon.TraySingleClickToShow = _settings.TraySingleClickToShow;
+
+            var trayMenu = new TrayMenuWindow(mainWindow, exitApplication);
+            void ShowSharedMenu() => trayMenu.ShowNearPointer(mainWindow);
+            mainWindow.ConfigureSharedMenu(ShowSharedMenu);
+            _trayIcon = new WindowsTrayIcon(
+                ShowSharedMenu,
+                () => RestoreWindow(mainWindow)) {
+                TraySingleClickToShow = _settings.TraySingleClickToShow,
+            };
+
+            _hotkeyService = new GlobalHotkeyService();
+            _hotkeyService.Apply(_settings, mainWindow, ToggleLatestTopmostTarget, AddQuickMemoFromClipboard);
+            _hotkeyService.RestoreRequested += () => Dispatcher.UIThread.Post(() => RestoreWindow(mainWindow));
+
+            mainWindow.ShowInTaskbar = false;
+            mainWindow.InitializeFromSettingsAndShow(_settings);
         });
     }
 
@@ -128,6 +159,7 @@ public partial class App : Application{
 
         popout.Activated += (_, _) => _latestMemoWindow = popout;
         popout.Closed += (_, _) => {
+            if (_positionAnimations.Remove(popout, out var animation)) animation.Cancel();
             memo.PopoutRefCount--;
             _memoPopouts.Remove(popout);
             if (ReferenceEquals(_latestMemoWindow, popout)) {
@@ -170,40 +202,30 @@ public partial class App : Application{
     /// <summary>
     /// 将窗口从当前位置平滑移动到目标位置（~180ms cubic ease-out）。
     /// </summary>
-    private static void AnimateWindowPosition(Window window, PixelPoint target) {
+    private void AnimateWindowPosition(Window window, PixelPoint target) {
+        if (_positionAnimations.Remove(window, out var previous)) previous.Cancel();
         var from = window.Position;
-        // 距离太近无需动画
-        if (from == target) return;
+        var dx = target.X - from.X;
+        var dy = target.Y - from.Y;
+        var distance = Math.Sqrt((dx * dx) + (dy * dy));
+        if (distance < 10 || !MotionPreferences.AnimationsEnabled) {
+            if (from != target) window.Position = target;
+            return;
+        }
 
-        const int durationMs = 180;
-        const int frameIntervalMs = 16;
-        var startTime = Environment.TickCount;
-
-        var timer = new DispatcherTimer(
-            TimeSpan.FromMilliseconds(frameIntervalMs),
-            DispatcherPriority.Render,
-            (_, _) => { });
-
-        timer.Tick += (_, _) => {
-            var elapsed = Environment.TickCount - startTime;
-            if (elapsed <= 0) elapsed = 0;
-            var t = elapsed / (double)durationMs;
-
-            if (t >= 1.0) {
-                window.Position = target;
-                timer.Stop();
-                return;
-            }
-
-            // cubic ease-out
-            var eased = 1.0 - Math.Pow(1.0 - t, 3);
-
-            window.Position = new PixelPoint(
-                (int)(from.X + (target.X - from.X) * eased),
-                (int)(from.Y + (target.Y - from.Y) * eased));
-        };
-
-        timer.Start();
+        FrameAnimation? animation = null;
+        animation = new FrameAnimation(window, MotionPreferences.AdaptiveDuration(distance), new CubicEaseOut(), progress => {
+            var next = new PixelPoint(
+                (int)Math.Round(from.X + ((target.X - from.X) * progress)),
+                (int)Math.Round(from.Y + ((target.Y - from.Y) * progress)));
+            if (window.Position != next) window.Position = next;
+        }, () => {
+            if (window.Position != target) window.Position = target;
+            if (_positionAnimations.TryGetValue(window, out var current) && ReferenceEquals(current, animation))
+                _positionAnimations.Remove(window);
+        });
+        _positionAnimations[window] = animation;
+        animation.Start();
     }
 
     /// <summary>
@@ -374,7 +396,7 @@ public partial class App : Application{
     /// </summary>
     internal static void RestoreWindow(Window mainWindow) {
         if (mainWindow is MainWindow window) {
-            window.ShowWithTransition();
+            window.ShowExpandedWithTransition();
             return;
         }
 

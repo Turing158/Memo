@@ -59,16 +59,27 @@
     用一个带圆角 + 边框的 Border 模拟整个窗口的视觉外壳。
   -->
   <Border x:Name="_windowShell"
-          Background="{StaticResource BgPrimaryBrush}"
-          BorderBrush="{StaticResource BorderSubtleBrush}"
-          BorderThickness="1"
-          CornerRadius="14"
+          Background="Transparent"
+          BorderBrush="Transparent"
+          BorderThickness="0"
+          CornerRadius="0"
           RenderTransformOrigin="0.5%,0.5%">
     <Border.RenderTransform>
       <ScaleTransform ScaleX="1" ScaleY="1"/>
     </Border.RenderTransform>
 
-    <Grid RowDefinitions="49,*">
+    <Grid>
+    <Border x:Name="_expandedSurface"
+            Background="{StaticResource BgPrimaryBrush}"
+            BorderBrush="{StaticResource BorderSubtleBrush}"
+            BorderThickness="1"
+            CornerRadius="14"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch">
+      <Border.RenderTransform>
+        <ScaleTransform ScaleX="1" ScaleY="1"/>
+      </Border.RenderTransform>
+    <Grid x:Name="_expandedContent" RowDefinitions="49,*">
 
       <!-- ═══════════════════════════════════════════════
            自定义标题栏（顶部左右圆角）
@@ -347,6 +358,47 @@
               Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Bottom"
               PointerPressed="OnResizeHandlePointerPressed"/>
 
+    </Grid>
+    </Border>
+
+    <Grid x:Name="_dockLayer" Opacity="0" IsHitTestVisible="False">
+      <Grid x:Name="_dockVisual"
+            RenderTransformOrigin="0%,50%"
+            IsHitTestVisible="False">
+        <Grid.RenderTransform>
+          <ScaleTransform ScaleX="0.9" ScaleY="0.9"/>
+        </Grid.RenderTransform>
+
+        <Path x:Name="_dockShape"
+              Data="M 0,0 L 44,0 L 44,44 L 0,44 Z"
+              Fill="{StaticResource BgPrimaryBrush}"
+              Stroke="{StaticResource BorderSubtleBrush}"
+              StrokeThickness="1"
+              Stretch="Fill"/>
+
+        <Border x:Name="_dockIconSurface"
+                Width="44" Height="44"
+                Background="Transparent"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+          <Image Source="/Assets/appicon.png"
+                 Width="18" Height="18"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"/>
+        </Border>
+      </Grid>
+
+      <Border x:Name="_dockContent"
+              Width="44" Height="44"
+              Background="Transparent"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              AutomationProperties.Name="Memo dock handle"
+              PointerPressed="OnDockPointerPressed"
+              PointerMoved="OnDockPointerMoved"
+              PointerReleased="OnDockPointerReleased"
+              PointerCaptureLost="OnDockPointerCaptureLost"/>
+    </Grid>
     </Grid>
   </Border>
 </Window>

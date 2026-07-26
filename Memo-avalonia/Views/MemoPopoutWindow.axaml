@@ -25,8 +25,8 @@
       <Setter Property="Padding" Value="10.5"/>
       <Setter Property="Transitions">
         <Transitions>
-          <BrushTransition Property="BorderBrush" Duration="0:0:0.18" Easing="CubicEaseOut"/>
-          <BrushTransition Property="Background" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+          <BrushTransition Property="BorderBrush" Duration="{DynamicResource MotionStandardDuration}" Easing="CubicEaseOut"/>
+          <BrushTransition Property="Background" Duration="{DynamicResource MotionStandardDuration}" Easing="CubicEaseOut"/>
         </Transitions>
       </Setter>
     </Style>
@@ -155,13 +155,7 @@
                        Foreground="{StaticResource TextTertiaryBrush}"
                        LetterSpacing="0.3"
                        Margin="0,0,0,1"
-                       Opacity="0">
-              <TextBlock.Transitions>
-                <Transitions>
-                  <DoubleTransition Property="Opacity" Duration="0:0:0.2" Easing="CubicEaseOut"/>
-                </Transitions>
-              </TextBlock.Transitions>
-            </TextBlock>
+                       Opacity="0"/>
             <TextBlock x:Name="_timeShortText"
                        Text="{Binding RelativeTime}"
                        HorizontalAlignment="Center"
@@ -170,13 +164,7 @@
                        Foreground="{StaticResource TextTertiaryBrush}"
                        LetterSpacing="0.3"
                        Margin="0,0,0,1"
-                       Opacity="1">
-              <TextBlock.Transitions>
-                <Transitions>
-                  <DoubleTransition Property="Opacity" Duration="0:0:0.2" Easing="CubicEaseOut"/>
-                </Transitions>
-              </TextBlock.Transitions>
-            </TextBlock>
+                       Opacity="1"/>
           </Grid>
 
           <Border Grid.Row="1"

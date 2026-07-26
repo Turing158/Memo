@@ -1,5 +1,4 @@
 using Avalonia;
-using Avalonia.Animation;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -31,7 +30,7 @@ public partial class MemoPopoutWindow : Window {
         _transition = new WindowTransitionController(this, this.FindControl<Border>("_popoutShell")!);
         _transition.PrepareOpen();
         Opened += (_, _) => _transition.PlayOpen();
-        SetupPinRotationTransition();
+        Closed += OnWindowClosed;
     }
 
     public MemoPopoutWindow(MemoItem memo, PixelPoint position, Action<MemoItem, string> saveMemo)
@@ -166,28 +165,32 @@ public partial class MemoPopoutWindow : Window {
 
         button.Classes.Set("PinActive", _isPinned);
 
-        if (button.Content is PathIcon pi && pi.RenderTransform is RotateTransform rt) {
-            rt.Angle = _isPinned ? -45 : 0;
-        }
-    }
-
-    private void SetupPinRotationTransition() {
-        var button = this.FindControl<Button>("_pinButton");
-        if (button?.Content is PathIcon pi && pi.RenderTransform is RotateTransform rt) {
-            rt.Transitions = new Transitions {
-                new DoubleTransition {
-                    Property = RotateTransform.AngleProperty,
-                    Duration = TimeSpan.FromMilliseconds(250),
-                    Easing = new CubicEaseOut(),
-                }
-            };
+        if (button.Content is PathIcon pi) {
+            var target = _isPinned ? -45 : 0;
+            MotionAnimations.AnimateRotation(pi, this, target, animate: IsVisible);
         }
     }
 
     private void OnTimeTapped(object? sender, TappedEventArgs e) {
         _showFullTime = !_showFullTime;
-        this.FindControl<TextBlock>("_timeFullText")!.Opacity = _showFullTime ? 1 : 0;
-        this.FindControl<TextBlock>("_timeShortText")!.Opacity = _showFullTime ? 0 : 1;
+        var full = this.FindControl<TextBlock>("_timeFullText")!;
+        var shortText = this.FindControl<TextBlock>("_timeShortText")!;
+        var fromFull = full.Opacity;
+        var fromShort = shortText.Opacity;
+        var toFull = _showFullTime ? 1 : 0;
+        var toShort = _showFullTime ? 0 : 1;
+        MotionAnimations.Start(full, this, MotionPreferences.StandardDuration, new CubicEaseOut(), progress => {
+            full.Opacity = MotionAnimations.Lerp(fromFull, toFull, progress);
+            shortText.Opacity = MotionAnimations.Lerp(fromShort, toShort, progress);
+        });
         e.Handled = true;
+    }
+
+    private void OnWindowClosed(object? sender, EventArgs e) {
+        _transition.Cancel();
+        if (this.FindControl<Button>("_pinButton")?.Content is PathIcon pinIcon)
+            MotionAnimations.Cancel(pinIcon);
+        var full = this.FindControl<TextBlock>("_timeFullText");
+        if (full != null) MotionAnimations.Cancel(full);
     }
 }

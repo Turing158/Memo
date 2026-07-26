@@ -1,8 +1,9 @@
 using Avalonia;
+using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
-using Avalonia.Threading;
+using Memo.UI;
 using System;
 
 namespace Memo.Components;
@@ -13,7 +14,7 @@ namespace Memo.Components;
 /// 支持点击切换、空格/回车切换、键盘聚焦态，并带滑块滑动动画。
 /// </summary>
 public partial class LabeledToggleSwitch : UserControl {
-    private DispatcherTimer? _animTimer;
+    private FrameAnimation? _animation;
     private double _columnWidth;
     private bool _value;
     private string _leftLabelText = "";
@@ -25,6 +26,10 @@ public partial class LabeledToggleSwitch : UserControl {
         InitializeComponent();
         GotFocus += (_, _) => SetFocused(true);
         LostFocus += (_, _) => SetFocused(false);
+        DetachedFromVisualTree += (_, _) => {
+            _animation?.Cancel();
+            _animation = null;
+        };
     }
 
     public static readonly DirectProperty<LabeledToggleSwitch, string> LeftLabelProperty =
@@ -122,7 +127,8 @@ public partial class LabeledToggleSwitch : UserControl {
             AnimateThumb(target);
         }
         else {
-            _animTimer?.Stop();
+            _animation?.Cancel();
+            _animation = null;
             ((TranslateTransform)_thumb.RenderTransform).X = target;
         }
     }
@@ -133,21 +139,20 @@ public partial class LabeledToggleSwitch : UserControl {
         var from = transform.X;
         if (Math.Abs(target - from) < 0.5) return;
 
-        _animTimer?.Stop();
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var duration = TimeSpan.FromMilliseconds(180);
-        var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(16), DispatcherPriority.Render, (_, _) => { });
-        timer.Tick += (_, _) => {
-            var t = sw.Elapsed >= duration ? 1.0 : sw.Elapsed.TotalMilliseconds / duration.TotalMilliseconds;
-            // cubic ease-out
-            var eased = 1.0 - Math.Pow(1.0 - t, 3.0);
-            transform.X = from + ((target - from) * eased);
-            if (t >= 1.0) {
-                timer.Stop();
-                transform.X = target;
-            }
-        };
-        _animTimer = timer;
-        timer.Start();
+        _animation?.Cancel();
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel == null) {
+            transform.X = target;
+            return;
+        }
+
+        FrameAnimation? animation = null;
+        animation = new FrameAnimation(topLevel, MotionPreferences.StandardDuration, new CubicEaseOut(),
+            progress => transform.X = from + ((target - from) * progress),
+            () => {
+                if (ReferenceEquals(_animation, animation)) _animation = null;
+            });
+        _animation = animation;
+        animation.Start();
     }
 }

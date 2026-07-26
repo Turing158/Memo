@@ -17,6 +17,21 @@
       <Setter Property="Cursor" Value="Hand"/>
     </Style>
     <!-- 聚焦态：暖橙描边，给键盘用户提供可见反馈 -->
+    <Style Selector="Border.toggle-track">
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="{DynamicResource MotionFastDuration}" Easing="CubicEaseOut"/>
+          <BrushTransition Property="BorderBrush" Duration="{DynamicResource MotionFastDuration}" Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="UserControl:pointerover Border.toggle-track">
+      <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderHoverBrush}"/>
+    </Style>
+    <Style Selector="UserControl:pressed Border.toggle-track">
+      <Setter Property="Background" Value="{StaticResource SurfaceActiveBrush}"/>
+    </Style>
     <Style Selector="Border.toggle-track.focused">
       <Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/>
     </Style>
@@ -28,6 +43,19 @@
       <Setter Property="BoxShadow" Value="0 1 2 0 #33C06A48"/>
     </Style>
     <!-- 标签文字 -->
+    <Style Selector="Border.toggle-thumb">
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="{DynamicResource MotionFastDuration}" Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="UserControl:pointerover Border.toggle-thumb">
+      <Setter Property="Background" Value="{StaticResource AccentHoverBrush}"/>
+    </Style>
+    <Style Selector="UserControl:pressed Border.toggle-thumb">
+      <Setter Property="Background" Value="{StaticResource AccentPressedBrush}"/>
+    </Style>
     <Style Selector="TextBlock.toggle-label">
       <Setter Property="FontSize" Value="11"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
@@ -36,7 +64,7 @@
       <Setter Property="Margin" Value="0"/>
       <Setter Property="Transitions">
         <Transitions>
-          <BrushTransition Property="Foreground" Duration="0:0:0.15"/>
+          <BrushTransition Property="Foreground" Duration="{DynamicResource MotionFastDuration}"/>
         </Transitions>
       </Setter>
     </Style>

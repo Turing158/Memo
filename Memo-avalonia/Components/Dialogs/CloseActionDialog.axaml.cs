@@ -1,8 +1,8 @@
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Memo.Models;
 using Memo.UI;
+using System;
 
 namespace Memo.Components.Dialogs;
 
@@ -16,22 +16,18 @@ public partial class CloseActionDialog : Window{
         _transition = new WindowTransitionController(this, this.FindControl<Border>("_dialogShell")!);
         _transition.PrepareOpen();
         Opened += (_, _) => _transition.PlayOpen();
-        ApplySelection();
+        Closed += (_, _) => _transition?.Cancel();
+        var selector = this.FindControl<SegmentedSelector>("_closeActionSelector")!;
+        selector.Options = new[] {
+            new SegmentedSelectorOption(nameof(CloseButtonAction.MinimizeToTray), "最小化托盘"),
+            new SegmentedSelectorOption(nameof(CloseButtonAction.Close), "关闭"),
+        };
+        selector.SelectedKey = _selectedAction.ToString();
+        selector.SelectionChanged += OnSelectionChanged;
     }
 
-    private void OnMinimizeToTrayOptionClick(object? sender, RoutedEventArgs e) {
-        _selectedAction = CloseButtonAction.MinimizeToTray;
-        ApplySelection();
-    }
-
-    private void OnCloseAppOptionClick(object? sender, RoutedEventArgs e) {
-        _selectedAction = CloseButtonAction.Close;
-        ApplySelection();
-    }
-
-    private void ApplySelection() {
-        this.FindControl<ToggleButton>("_minimizeToTrayOption")!.IsChecked = _selectedAction == CloseButtonAction.MinimizeToTray;
-        this.FindControl<ToggleButton>("_closeAppOption")!.IsChecked = _selectedAction == CloseButtonAction.Close;
+    private void OnSelectionChanged(object? sender, SegmentedSelectionChangedEventArgs e) {
+        if (Enum.TryParse<CloseButtonAction>(e.NewKey, out var action)) _selectedAction = action;
     }
 
     private void OnConfirmClick(object? sender, RoutedEventArgs e) {

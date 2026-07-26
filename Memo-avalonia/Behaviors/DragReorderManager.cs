@@ -16,10 +16,10 @@ using Avalonia.Media.Transformation;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Memo.Models;
+using Memo.UI;
 using Memo.ViewModels;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 
 namespace Memo.Behaviors;
@@ -30,19 +30,17 @@ namespace Memo.Behaviors;
 /// 核心设计：拖拽期间不修改集合（被拖项 Opacity=0 保持布局空间），
 /// 悬浮项用 Popup 渲染在弹出层（ZIndex 高于窗口内容），
 /// 占位框仍绘制在悬浮层 Canvas 上，
-/// 相邻项让位用 TranslateTransform + DispatcherTimer 插值动画。
+/// 相邻项让位与边缘自动滚动共用 TopLevel 渲染帧时钟。
 ///
 /// 教训（来自 drag_debug.log 的前次失败尝试）：绝不在拖拽期间从集合移除项。
 /// </summary>
-public sealed class DragReorderManager {
+public sealed class DragReorderManager : IDisposable {
     // ── 时间 / 阈值常量 ──
     private const double LongPressMs = 500;
     private const double MoveThreshold = 8;
     private const double EdgeThreshold = 40;
-    private const double MaxScrollSpeed = 12;
-    private const double AnimMs = 180;
+    private const double MaxScrollSpeedPerSecond = 750;
     private const double PlaceholderOpacity = 0.35;
-    private const double PopupOpacity = 0.7;
 
     private readonly ItemsControl _items;
     private readonly ScrollViewer _scroller;
@@ -67,16 +65,33 @@ public sealed class DragReorderManager {
 
     // ── 视觉元素 ──
     private Popup? _floatingPopup;
+    private Border? _floatingOuter;
+    private Border? _floatingCard;
+    private TextBlock? _floatingTitle;
+    private TextBlock? _floatingSubtitle;
+    private TextBlock? _floatingTime;
+    private ScaleTransform? _floatingScale;
     private Size _popupSize;
     private Control? _placeholder;
 
     // ── 让位动画状态（手动插值，兼容 Avalonia 11） ──
     private readonly List<SlideState> _slides = new();
-    private readonly DispatcherTimer _animTimer;
+    private readonly HashSet<Control> _slideTargets = new();
+    private readonly List<Control> _dragContainers = new();
 
     // ── 计时器 ──
     private readonly DispatcherTimer _longPressTimer;
-    private readonly DispatcherTimer _scrollTimer;
+    private ScrollContext? _scrollContext;
+    private TopLevel? _frameTopLevel;
+    private bool _frameRequested;
+    private TimeSpan? _lastFrameTimestamp;
+    private Point _latestPopupPointerInLayer;
+    private bool _popupPositionDirty;
+    private bool _isAttached;
+    private bool _disposed;
+
+    private static double SlideDurationMilliseconds =>
+        MotionPreferences.Effective(TimeSpan.FromMilliseconds(180)).TotalMilliseconds;
 
     public DragReorderManager(ItemsControl items, ScrollViewer scroller, Canvas layer, MainViewModel vm, Action<MemoItem, PixelPoint>? requestPopout = null) {
         _items = items;
@@ -90,15 +105,6 @@ public sealed class DragReorderManager {
             DispatcherPriority.Normal,
             (_, _) => OnLongPressElapsed());
 
-        _scrollTimer = new DispatcherTimer(
-            TimeSpan.FromMilliseconds(16),
-            DispatcherPriority.Render,
-            (_, _) => OnScrollTick());
-
-        _animTimer = new DispatcherTimer(
-            TimeSpan.FromMilliseconds(16),
-            DispatcherPriority.Render,
-            (_, _) => OnAnimTick());
     }
 
     public bool IsDragging => _isDragging;
@@ -107,6 +113,8 @@ public sealed class DragReorderManager {
     //  挂载事件
     // ═══════════════════════════════════════════════
     public void Attach() {
+        if (_isAttached || _disposed) return;
+        _isAttached = true;
         _items.AddHandler(InputElement.PointerPressedEvent, OnPointerPressed,
             RoutingStrategies.Bubble, handledEventsToo: true);
         _items.AddHandler(InputElement.PointerMovedEvent, OnPointerMoved,
@@ -115,6 +123,37 @@ public sealed class DragReorderManager {
             RoutingStrategies.Bubble, handledEventsToo: true);
         _items.AddHandler(InputElement.PointerCaptureLostEvent, OnPointerCaptureLost,
             RoutingStrategies.Bubble, handledEventsToo: true);
+    }
+
+    public void Detach() {
+        if (!_isAttached) return;
+        _isAttached = false;
+        _items.RemoveHandler(InputElement.PointerPressedEvent, OnPointerPressed);
+        _items.RemoveHandler(InputElement.PointerMovedEvent, OnPointerMoved);
+        _items.RemoveHandler(InputElement.PointerReleasedEvent, OnPointerReleased);
+        _items.RemoveHandler(InputElement.PointerCaptureLostEvent, OnPointerCaptureLost);
+        _longPressTimer.Stop();
+        _scrollContext = null;
+        CleanupDragState();
+    }
+
+    public void Dispose() {
+        if (_disposed) return;
+        Detach();
+        _disposed = true;
+        _frameRequested = false;
+        if (_floatingPopup != null) {
+            _floatingPopup.Close();
+            _floatingPopup.Child = null;
+        }
+        _floatingPopup = null;
+        _floatingOuter = null;
+        _floatingCard = null;
+        _floatingTitle = null;
+        _floatingSubtitle = null;
+        _floatingTime = null;
+        _floatingScale = null;
+        _frameTopLevel = null;
     }
 
     // ═══════════════════════════════════════════════
@@ -208,6 +247,9 @@ public sealed class DragReorderManager {
         _isDragging = true;
         CaptureDragPointer();
 
+        _dragContainers.Clear();
+        _dragContainers.AddRange(GetContainersInOrder());
+
         // 测量卡片真实内容高度和底部间距
         ComputeCardDimensions();
 
@@ -242,7 +284,9 @@ public sealed class DragReorderManager {
 
         if (_floatingPopup != null)
             _floatingPopup.Open();
-        UpdateFloatingPopupPosition(e: null);
+        _latestPopupPointerInLayer = _items.TranslatePoint(_downPos, _layer) ?? new Point(0, 0);
+        _popupPositionDirty = true;
+        StartVisualFrameLoop();
 
         // 2) 占位框使用内容高度 + 底部间距
         _placeholder = CreatePlaceholder(size);
@@ -257,7 +301,7 @@ public sealed class DragReorderManager {
     // ═══════════════════════════════════════════════
     private void EndDrag(PixelPoint? releasePoint, bool requestPopout) {
         _longPressTimer.Stop();
-        _scrollTimer.Stop();
+        _scrollContext = null;
 
         var dragged = _dragItem;
         var startIndex = _dragIndex;
@@ -289,9 +333,10 @@ public sealed class DragReorderManager {
 
         _dragItem = null;
         _dragContainer = null;
-        _floatingPopup = null;
         _placeholder = null;
         _pressedPointer = null;
+        _dragContainers.Clear();
+        _lastFrameTimestamp = null;
     }
 
     private void CancelLongPress() {
@@ -310,8 +355,6 @@ public sealed class DragReorderManager {
         if (_dragItem == null) return;
         if (size.Width < 1 || size.Height < 1) return;
 
-        _popupSize = size;
-
         // 解析主题资源笔刷
         var accentBrush = (IBrush?)Application.Current!.Resources["AccentPrimaryBrush"];
         var surfaceBrush = (IBrush?)Application.Current!.Resources["SurfacePrimaryBrush"];
@@ -322,195 +365,125 @@ public sealed class DragReorderManager {
         if (surfaceBrush == null) surfaceBrush = Brushes.White;
         if (borderBrush == null) borderBrush = Brushes.LightGray;
 
-        // ── 阴影边距（Blur=20 → 半径=10，OffsetY=8 → 底部多8） ──
-        double shadowPad = 18;
+        EnsureFloatingPopup(accentBrush, surfaceBrush, borderBrush, textPrimary, textSecondary, textTertiary);
+        if (_floatingPopup == null || _floatingOuter == null || _floatingCard == null
+            || _floatingTitle == null || _floatingSubtitle == null || _floatingTime == null
+            || _floatingScale == null) return;
 
-        // ── 卡片本体（背景 + 边框 + 圆角） ──
-        var card = new Border {
-            Width = size.Width,
-            Height = size.Height,
-            CornerRadius = new CornerRadius(12),
-            Background = surfaceBrush,
-            BorderBrush = borderBrush,
-            BorderThickness = new Thickness(1),
-            IsHitTestVisible = false,
+        const double shadowPad = 18;
+        _floatingCard.Width = size.Width;
+        _floatingCard.Height = size.Height;
+        _floatingOuter.Width = size.Width + (shadowPad * 2);
+        _floatingOuter.Height = size.Height + (shadowPad * 2);
+        _popupSize = new Size(_floatingOuter.Width, _floatingOuter.Height);
+        _floatingTitle.Text = _dragItem.Title;
+        _floatingSubtitle.Text = _dragItem.Subtitle;
+        var hasSubtitle = !string.IsNullOrEmpty(_dragItem.Subtitle);
+        _floatingSubtitle.IsVisible = hasSubtitle;
+        _floatingTime.Text = _dragItem.RelativeTime;
+        _floatingOuter.Opacity = 1;
+        _floatingScale.ScaleX = 1;
+        _floatingScale.ScaleY = 1;
+    }
+
+    private void EnsureFloatingPopup(
+        IBrush? accentBrush,
+        IBrush surfaceBrush,
+        IBrush borderBrush,
+        IBrush? textPrimary,
+        IBrush? textSecondary,
+        IBrush? textTertiary) {
+        if (_floatingPopup != null) return;
+        const double shadowPad = 18;
+
+        _floatingTitle = new TextBlock {
+            FontWeight = FontWeight.SemiBold, FontSize = 14, Foreground = textPrimary,
+            TextTrimming = TextTrimming.CharacterEllipsis, LineHeight = 20,
+            Margin = new Thickness(0, 0, 8, 0), IsHitTestVisible = false,
+        };
+        _floatingSubtitle = new TextBlock {
+            FontSize = 12, Foreground = textSecondary, TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, LineHeight = 17,
+            LetterSpacing = 0.1, IsHitTestVisible = false,
+        };
+        _floatingTime = new TextBlock {
+            [Grid.ColumnProperty] = 1, FontSize = 10.5, Foreground = textTertiary,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0), LetterSpacing = 0.3, IsHitTestVisible = false,
+        };
+
+        var details = new Grid {
+            [Grid.RowProperty] = 1, ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            Margin = new Thickness(0, 5, 0, 0), IsHitTestVisible = false,
+        };
+        details.Children.Add(_floatingSubtitle);
+        details.Children.Add(_floatingTime);
+        var content = new Grid {
+            [Grid.ColumnProperty] = 1, RowDefinitions = new RowDefinitions("Auto,Auto"),
+            Margin = new Thickness(13, 14, 8, 14), IsHitTestVisible = false,
+        };
+        content.Children.Add(_floatingTitle);
+        content.Children.Add(details);
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("3,*"), IsHitTestVisible = false };
+        grid.Children.Add(new Border {
+            Background = accentBrush, CornerRadius = new CornerRadius(2), Width = 3,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Stretch,
+            Margin = new Thickness(0, 10, 0, 10), Opacity = 0.5, IsHitTestVisible = false,
+        });
+        grid.Children.Add(content);
+
+        _floatingCard = new Border {
+            CornerRadius = new CornerRadius(12), Background = surfaceBrush, BorderBrush = borderBrush,
+            BorderThickness = new Thickness(1), IsHitTestVisible = false, Child = grid,
+            Margin = new Thickness(shadowPad),
             BoxShadow = new BoxShadows(new BoxShadow {
-                OffsetX = 0,
-                OffsetY = 8,
-                Blur = 20,
-                Color = Color.FromArgb(60, 0, 0, 0),
+                OffsetX = 0, OffsetY = 8, Blur = 20, Color = Color.FromArgb(60, 0, 0, 0),
             }),
         };
-
-        // ── 透明外层容留阴影空间 ──
-        var outer = new Border {
-            Width = size.Width + shadowPad * 2,
-            Height = size.Height + shadowPad * 2,
-            Background = Brushes.Transparent,
-            IsHitTestVisible = false,
-            Child = card,
+        _floatingScale = new ScaleTransform(1, 1);
+        _floatingOuter = new Border {
+            Background = Brushes.Transparent, IsHitTestVisible = false, Child = _floatingCard,
+            RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative),
+            RenderTransform = _floatingScale,
         };
-        card.Margin = new Thickness(shadowPad);
-
-        // ── 入场动画：从 1× / 不透明 → 1.02× / 0.8 不透明 ──
-        outer.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
-        outer.RenderTransform = TransformOperations.Parse("scale(1)");
-        outer.Opacity = 1.0;
-        outer.Transitions = new Transitions {
-            new TransformOperationsTransition {
-                Property = Visual.RenderTransformProperty,
-                Duration = TimeSpan.FromMilliseconds(150),
-                Easing = new CubicEaseOut(),
-            },
-            new DoubleTransition {
-                Property = Visual.OpacityProperty,
-                Duration = TimeSpan.FromMilliseconds(150),
-                Easing = new CubicEaseOut(),
-            },
-        };
-
-        // Popup 总尺寸（含阴影间距）
-        _popupSize = new Size(outer.Width, outer.Height);
-
-        // ── 列：装饰条 | 内容区 ──
-        var grid = new Grid {
-            ColumnDefinitions = new ColumnDefinitions("3,*,Auto"),
-            IsHitTestVisible = false,
-        };
-
-        // 左侧 Accent 装饰条
-        grid.Children.Add(new Border {
-            [Grid.ColumnProperty] = 0,
-            Background = accentBrush,
-            CornerRadius = new CornerRadius(2),
-            Width = 3,
-            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Stretch,
-            Margin = new Thickness(0, 10, 0, 10),
-            Opacity = 0.5,
-            IsHitTestVisible = false,
-        });
-
-        // ── 内容区 ──
-        var contentGrid = new Grid {
-            [Grid.ColumnProperty] = 1,
-            RowDefinitions = new RowDefinitions("Auto,Auto"),
-            Margin = new Thickness(13, 14, 8, 14),
-            IsHitTestVisible = false,
-        };
-
-        // 标题行
-        var titleBlock = new TextBlock {
-            Text = _dragItem.Title,
-            FontWeight = FontWeight.SemiBold,
-            FontSize = 14,
-            Foreground = textPrimary,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            LineHeight = 20,
-            Margin = new Thickness(0, 0, 8, 0),
-            IsHitTestVisible = false,
-        };
-        Grid.SetColumn(titleBlock, 0);
-        contentGrid.Children.Add(titleBlock);
-
-        // 副标题 + 时间行（仅在副标题不为空时显示整行）
-        var hasSubtitle = !string.IsNullOrEmpty(_dragItem.Subtitle);
-        if (hasSubtitle) {
-            var subGrid = new Grid {
-                [Grid.RowProperty] = 1,
-                ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-                Margin = new Thickness(0, 5, 0, 0),
-                IsHitTestVisible = false,
-            };
-
-            var subtitleBlock = new TextBlock {
-                Text = _dragItem.Subtitle,
-                FontSize = 12,
-                Foreground = textSecondary,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                LineHeight = 17,
-                LetterSpacing = 0.1,
-                IsHitTestVisible = false,
-            };
-            Grid.SetColumn(subtitleBlock, 0);
-            subGrid.Children.Add(subtitleBlock);
-
-            var timeBlock = new TextBlock {
-                Text = _dragItem.RelativeTime,
-                FontSize = 10.5,
-                Foreground = textTertiary,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                Margin = new Thickness(10, 0, 0, 0),
-                LetterSpacing = 0.3,
-                IsHitTestVisible = false,
-            };
-            Grid.SetColumn(timeBlock, 1);
-            subGrid.Children.Add(timeBlock);
-
-            contentGrid.Children.Add(subGrid);
-        }
-        else {
-            // 无副标题：单独显示时间行
-            var timeBlock = new TextBlock {
-                [Grid.RowProperty] = 1,
-                Text = _dragItem.RelativeTime,
-                FontSize = 10.5,
-                Foreground = textTertiary,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                Margin = new Thickness(0, 5, 0, 0),
-                LetterSpacing = 0.3,
-                IsHitTestVisible = false,
-            };
-            contentGrid.Children.Add(timeBlock);
-        }
-
-        grid.Children.Add(contentGrid);
-        card.Child = grid;
-
-        // ── Popup ──
         _floatingPopup = new Popup {
-            Placement = PlacementMode.AnchorAndGravity,
-            PlacementAnchor = PopupAnchor.TopLeft,
-            PlacementGravity = PopupGravity.TopLeft,
-            PlacementTarget = _layer,
-            IsLightDismissEnabled = false,
-            OverlayDismissEventPassThrough = true,
-            OverlayInputPassThroughElement = _items,
-            Child = outer,
+            Placement = PlacementMode.AnchorAndGravity, PlacementAnchor = PopupAnchor.TopLeft,
+            PlacementGravity = PopupGravity.TopLeft, PlacementTarget = _layer,
+            IsLightDismissEnabled = false, OverlayDismissEventPassThrough = true,
+            OverlayInputPassThroughElement = _items, Child = _floatingOuter,
         };
-
-        // 打开后执行入场动画 + 消除 Popup 宿主窗口白色底色
         _floatingPopup.Opened += (_, _) => {
-            var topLevel = TopLevel.GetTopLevel(outer);
-            if (topLevel != null)
-                topLevel.Background = Brushes.Transparent;
-
-            // 触发 Transition：scale 1→1.08，opacity 1→0.7
-            outer.RenderTransform = TransformOperations.Parse("scale(1.02)");
-            outer.Opacity = 0.8;
+            if (_floatingOuter == null || _floatingScale == null) return;
+            var topLevel = TopLevel.GetTopLevel(_floatingOuter);
+            if (topLevel == null) {
+                _floatingScale.ScaleX = 1.02;
+                _floatingScale.ScaleY = 1.02;
+                _floatingOuter.Opacity = 0.8;
+                return;
+            }
+            topLevel.Background = Brushes.Transparent;
+            var scale = _floatingScale;
+            MotionAnimations.Start(_floatingOuter, topLevel, MotionPreferences.FastDuration,
+                new CubicEaseOut(), progress => {
+                    var value = 1 + (0.02 * progress);
+                    scale.ScaleX = value;
+                    scale.ScaleY = value;
+                    _floatingOuter.Opacity = 1 - (0.2 * progress);
+                });
         };
     }
 
-    private void UpdateFloatingPopupPosition(PointerEventArgs? e) {
-        if (_floatingPopup == null) return;
-
-        Point pointerInLayer;
-
-        if (e != null)
-            pointerInLayer = e.GetPosition(_layer);
-        else
-            pointerInLayer = _items.TranslatePoint(_downPos, _layer) ?? new Point(0, 0);
-
-        // 悬浮层中心对准鼠标
-        var x = pointerInLayer.X + _popupSize.Width / 2;
-        var y = pointerInLayer.Y + _popupSize.Height / 2;
-
-        _floatingPopup.HorizontalOffset = x;
-        _floatingPopup.VerticalOffset = y;
+    private void ApplyFloatingPopupPosition() {
+        if (_floatingPopup == null || !_popupPositionDirty) return;
+        _popupPositionDirty = false;
+        _floatingPopup.HorizontalOffset = _latestPopupPointerInLayer.X + (_popupSize.Width / 2);
+        _floatingPopup.VerticalOffset = _latestPopupPointerInLayer.Y + (_popupSize.Height / 2);
     }
 
     private void UpdateFloatingPosition(PointerEventArgs e) {
-        UpdateFloatingPopupPosition(e);
+        _latestPopupPointerInLayer = e.GetPosition(_layer);
+        _popupPositionDirty = true;
+        StartVisualFrameLoop();
     }
 
     // ═══════════════════════════════════════════════
@@ -578,7 +551,7 @@ public sealed class DragReorderManager {
     private void UpdatePlaceholderPosition() {
         if (_placeholder == null) return;
 
-        var containers = GetContainersInOrder();
+        var containers = ActiveContainers();
         if (containers.Count == 0) return;
 
         var targetY = ComputePlaceholderY(containers, _insertIndex);
@@ -591,7 +564,7 @@ public sealed class DragReorderManager {
         var origin = _items.TranslatePoint(new Point(0, targetY), _layer);
         if (!origin.HasValue) return;
 
-        Canvas.SetLeft(_placeholder, origin.Value.X);
+        Canvas.SetLeft(_placeholder, origin.Value.X + 5);
         Canvas.SetTop(_placeholder, origin.Value.Y);
     }
 
@@ -632,7 +605,7 @@ public sealed class DragReorderManager {
     //  插入索引计算
     // ═══════════════════════════════════════════════
     private int ComputeInsertIndex(Point pointerInItems) {
-        var containers = GetContainersInOrder();
+        var containers = ActiveContainers();
         if (containers.Count == 0) return 0;
 
         int insertPos = containers.Count;
@@ -657,7 +630,7 @@ public sealed class DragReorderManager {
     private void BeginNeighborSlides() {
         if (_dragContainer == null) return;
 
-        var containers = GetContainersInOrder();
+        var containers = ActiveContainers();
         if (containers.Count == 0) return;
 
         int lo = Math.Min(_dragIndex, _insertIndex);
@@ -665,14 +638,13 @@ public sealed class DragReorderManager {
 
         // 无位移（回到原槽）→ 全部在途让位项归零，避免残留偏移导致重叠
         if (lo == hi) {
-            foreach (var s in _slides.ToList()) {
+            foreach (var s in _slides) {
                 s.From = s.Current;
                 s.To = 0;
-                s.DurationMs = AnimMs;
+                s.DurationMs = SlideDurationMilliseconds;
                 s.Elapsed = 0;
             }
-            if (_slides.Count > 0 && !_animTimer.IsEnabled)
-                _animTimer.Start();
+            StartVisualFrameLoop();
             return;
         }
 
@@ -680,36 +652,41 @@ public sealed class DragReorderManager {
         bool movingDown = _insertIndex > _dragIndex;
 
         // 先把不在范围内的 slide 归位
-        var inRange = new HashSet<Control>();
-        foreach (var c in containers) {
+        _slideTargets.Clear();
+        for (var idx = 0; idx < containers.Count; idx++) {
+            var c = containers[idx];
             if (c == _dragContainer) continue;
-            var idx = containers.IndexOf(c);
             if (idx >= lo && idx <= hi)
-                inRange.Add(c);
+                _slideTargets.Add(c);
         }
 
         // 把不在范围里的 slide 归位
-        foreach (var s in _slides.ToList()) {
-            if (!inRange.Contains(s.Control)) {
+        foreach (var s in _slides) {
+            if (!_slideTargets.Contains(s.Control)) {
                 s.From = s.Current;
                 s.To = 0;
-                s.DurationMs = AnimMs;
+                s.DurationMs = SlideDurationMilliseconds;
                 s.Elapsed = 0;
             }
         }
 
-        foreach (var c in containers) {
+        for (var idx = 0; idx < containers.Count; idx++) {
+            var c = containers[idx];
             if (c == _dragContainer) continue;
-            var idx = containers.IndexOf(c);
             if (idx < lo || idx > hi) continue;
 
             double target = movingDown ? -slotSize : slotSize;
 
-            var existing = _slides.FirstOrDefault(s => ReferenceEquals(s.Control, c));
+            SlideState? existing = null;
+            foreach (var slide in _slides) {
+                if (!ReferenceEquals(slide.Control, c)) continue;
+                existing = slide;
+                break;
+            }
             if (existing is { Control: not null }) {
                 existing.From = existing.Current;
                 existing.To = target;
-                existing.DurationMs = AnimMs;
+                existing.DurationMs = SlideDurationMilliseconds;
                 existing.Elapsed = 0;
             }
             else {
@@ -721,27 +698,19 @@ public sealed class DragReorderManager {
                     From = tf.Y,
                     To = target,
                     Current = tf.Y,
-                    DurationMs = AnimMs,
+                    DurationMs = SlideDurationMilliseconds,
                     Elapsed = 0,
                 });
             }
         }
 
-        if (!_animTimer.IsEnabled)
-            _animTimer.Start();
+        StartVisualFrameLoop();
     }
 
-    private void OnAnimTick() {
-        if (_slides.Count == 0) {
-            _animTimer.Stop();
-            return;
-        }
-
-        var dt = 16.0;
-        var completed = new List<SlideState>();
-
-        foreach (var s in _slides) {
-            s.Elapsed += dt;
+    private void AdvanceSlides(double elapsedMilliseconds) {
+        for (var i = _slides.Count - 1; i >= 0; i--) {
+            var s = _slides[i];
+            s.Elapsed += elapsedMilliseconds;
             var t = s.Elapsed >= s.DurationMs ? 1.0 : s.Elapsed / s.DurationMs;
             // CubicEaseInOut
             var eased = t < 0.5
@@ -751,24 +720,17 @@ public sealed class DragReorderManager {
             s.Current = s.From + (s.To - s.From) * eased;
             s.Transform.Y = s.Current;
 
-            if (t >= 1.0)
-                completed.Add(s);
-        }
-
-        foreach (var s in completed) {
+            if (t < 1) continue;
             s.Transform.Y = s.To;
             if (Math.Abs(s.To) < 0.001) {
-                s.Control.RenderTransform = null;
-                _slides.Remove(s);
+                if (ReferenceEquals(s.Control.RenderTransform, s.Transform)) s.Control.RenderTransform = null;
+                _slides.RemoveAt(i);
             }
             else {
                 s.From = s.To;
                 s.Elapsed = s.DurationMs;
             }
         }
-
-        if (_slides.Count == 0)
-            _animTimer.Stop();
     }
 
     // ═══════════════════════════════════════════════
@@ -789,32 +751,28 @@ public sealed class DragReorderManager {
         else
             distance = 0;
 
-        if (distance > 0 && !_scrollTimer.IsEnabled) {
-            _scrollTimer.Tag = new ScrollContext {
+        if (distance > 0) {
+            _scrollContext ??= new ScrollContext {
                 PointerInItems = pointerInItems,
                 PointerInViewport = pointerInSv,
                 Direction = pointerInSv.Y < EdgeThreshold ? -1 : 1,
                 Strength = distance / EdgeThreshold,
             };
-            _scrollTimer.Start();
+            _scrollContext.PointerInItems = pointerInItems;
+            _scrollContext.PointerInViewport = pointerInSv;
+            _scrollContext.Direction = pointerInSv.Y < EdgeThreshold ? -1 : 1;
+            _scrollContext.Strength = Math.Clamp(distance / EdgeThreshold, 0, 1);
+            StartVisualFrameLoop();
         }
-        else if (distance > 0 && _scrollTimer.IsEnabled) {
-            if (_scrollTimer.Tag is ScrollContext ctx) {
-                ctx.PointerInItems = pointerInItems;
-                ctx.PointerInViewport = pointerInSv;
-                ctx.Direction = pointerInSv.Y < EdgeThreshold ? -1 : 1;
-                ctx.Strength = distance / EdgeThreshold;
-            }
-        }
-        else if (distance == 0 && _scrollTimer.IsEnabled) {
-            _scrollTimer.Stop();
+        else {
+            _scrollContext = null;
         }
     }
 
-    private void OnScrollTick() {
-        if (_scrollTimer.Tag is not ScrollContext ctx) return;
+    private void AdvanceEdgeScroll(double elapsedSeconds) {
+        if (_scrollContext is not { } ctx) return;
 
-        var delta = ctx.Direction * ctx.Strength * MaxScrollSpeed;
+        var delta = ctx.Direction * ctx.Strength * MaxScrollSpeedPerSecond * elapsedSeconds;
         var offset = _scroller.Offset;
         var maxOffsetY = Math.Max(0, _scroller.Extent.Height - _scroller.Viewport.Height);
         var newY = Math.Clamp(offset.Y + delta, 0, maxOffsetY);
@@ -831,6 +789,40 @@ public sealed class DragReorderManager {
             UpdatePlaceholderPosition();
             BeginNeighborSlides();
         }
+    }
+
+    private void StartVisualFrameLoop() {
+        if (_frameRequested) return;
+        _frameTopLevel ??= TopLevel.GetTopLevel(_items);
+        if (_frameTopLevel == null) return;
+        _frameRequested = true;
+        _frameTopLevel.RequestAnimationFrame(OnVisualFrame);
+    }
+
+    private void OnVisualFrame(TimeSpan timestamp) {
+        _frameRequested = false;
+        if (_disposed) return;
+        var elapsed = _lastFrameTimestamp.HasValue ? timestamp - _lastFrameTimestamp.Value : TimeSpan.Zero;
+        _lastFrameTimestamp = timestamp;
+        var milliseconds = Math.Clamp(elapsed.TotalMilliseconds, 0, 50);
+
+        ApplyFloatingPopupPosition();
+        AdvanceSlides(MotionPreferences.AnimationsEnabled ? milliseconds : double.MaxValue);
+        AdvanceEdgeScroll(milliseconds / 1000);
+
+        if (_scrollContext != null || HasActiveSlideAnimations() || _popupPositionDirty) {
+            StartVisualFrameLoop();
+        }
+        else {
+            _lastFrameTimestamp = null;
+        }
+    }
+
+    private bool HasActiveSlideAnimations() {
+        foreach (var slide in _slides) {
+            if (slide.Elapsed < slide.DurationMs) return true;
+        }
+        return false;
     }
 
     private sealed class ScrollContext {
@@ -856,7 +848,7 @@ public sealed class DragReorderManager {
     private void RemoveDragVisuals() {
         if (_floatingPopup != null) {
             _floatingPopup.Close();
-            _floatingPopup = null;
+            if (_floatingOuter != null) MotionAnimations.Cancel(_floatingOuter);
         }
         if (_placeholder != null) {
             _layer.Children.Remove(_placeholder);
@@ -915,6 +907,9 @@ public sealed class DragReorderManager {
         return result.OrderBy(GetContainerLayoutY).ToList();
     }
 
+    private List<Control> ActiveContainers() =>
+        _dragContainers.Count > 0 ? _dragContainers : GetContainersInOrder();
+
     private double GetContainerY(Control c) {
         var pt = c.TranslatePoint(new Point(0, 0), _items);
         return pt.HasValue ? pt.Value.Y : c.Bounds.Y;
@@ -940,7 +935,7 @@ public sealed class DragReorderManager {
     private void ComputeCardDimensions() {
         if (_dragContainer == null) { _cardContentHeight = 100; _cardBottomGap = 10; return; }
 
-        var containers = GetContainersInOrder();
+        var containers = ActiveContainers();
         double boundsHeight = _dragContainer.Bounds.Height;
 
         // 优先通过相邻容器的布局位置差推导 slotHeight

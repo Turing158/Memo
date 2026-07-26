@@ -1,0 +1,179 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Memo.Components.AnimatedSlider"
+             x:Name="_root"
+             Background="Transparent">
+  <UserControl.Resources>
+    <ControlTheme x:Key="AnimatedSliderTheme" TargetType="Slider">
+      <Setter Property="Height" Value="44"/>
+      <Setter Property="MinHeight" Value="44"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Focusable" Value="True"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid Height="44">
+            <Track x:Name="PART_Track"
+                   Minimum="{TemplateBinding Minimum}"
+                   Maximum="{TemplateBinding Maximum}"
+                   Value="{TemplateBinding Value}"
+                   Orientation="Horizontal"
+                   IsDirectionReversed="False"
+                   VerticalAlignment="Center">
+              <Track.DecreaseButton>
+                <RepeatButton Focusable="False" Background="Transparent" BorderThickness="0" Padding="0">
+                  <RepeatButton.Template>
+                    <ControlTemplate>
+                      <Border Height="4"
+                              VerticalAlignment="Center"
+                              Background="Transparent"
+                              CornerRadius="2"/>
+                    </ControlTemplate>
+                  </RepeatButton.Template>
+                </RepeatButton>
+              </Track.DecreaseButton>
+              <Track.Thumb>
+                <Thumb Width="44"
+                       Height="44"
+                       Focusable="False"
+                       Cursor="Hand"
+                       Background="Transparent"
+                       BorderThickness="0"
+                       RenderTransformOrigin="50%,50%">
+                  <Thumb.Template>
+                    <ControlTemplate>
+                      <Grid Width="44" Height="44" Background="Transparent">
+                        <Border Width="18"
+                                Height="18"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Background="{StaticResource SurfacePrimaryBrush}"
+                                BorderBrush="{StaticResource AccentPrimaryBrush}"
+                                BorderThickness="2"
+                                CornerRadius="9"/>
+                      </Grid>
+                    </ControlTemplate>
+                  </Thumb.Template>
+                </Thumb>
+              </Track.Thumb>
+              <Track.IncreaseButton>
+                <RepeatButton Focusable="False" Background="Transparent" BorderThickness="0" Padding="0">
+                  <RepeatButton.Template>
+                    <ControlTemplate>
+                      <Border Height="4"
+                              VerticalAlignment="Center"
+                              Background="Transparent"
+                              CornerRadius="2"/>
+                    </ControlTemplate>
+                  </RepeatButton.Template>
+                </RepeatButton>
+              </Track.IncreaseButton>
+            </Track>
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="Border.slider-focus-cue">
+      <Setter Property="Height" Value="14"/>
+      <Setter Property="Margin" Value="20,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="7"/>
+      <Setter Property="Opacity" Value="0"/>
+      <Setter Property="IsHitTestVisible" Value="False"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity"
+                            Duration="{DynamicResource MotionFastDuration}"
+                            Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.slider-focus-cue.focused">
+      <Setter Property="Opacity" Value="1"/>
+    </Style>
+    <Style Selector="Border.slider-tooltip">
+      <Setter Property="MinWidth" Value="38"/>
+      <Setter Property="Height" Value="26"/>
+      <Setter Property="Padding" Value="8,0"/>
+      <Setter Property="Background" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderEmphasisBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="7"/>
+      <Setter Property="HorizontalAlignment" Value="Left"/>
+      <Setter Property="VerticalAlignment" Value="Top"/>
+      <Setter Property="IsHitTestVisible" Value="False"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="44,Auto" ClipToBounds="False">
+    <Popup x:Name="_tooltipPopup"
+           Placement="Top"
+           VerticalOffset="-4"
+           IsLightDismissEnabled="False"
+           IsHitTestVisible="False">
+      <Border x:Name="_tooltipBubble"
+              Classes="slider-tooltip"
+              IsVisible="False"
+              Opacity="0"
+              RenderTransformOrigin="50%,50%">
+        <Border.RenderTransform>
+          <TranslateTransform Y="3"/>
+        </Border.RenderTransform>
+        <TextBlock x:Name="_tooltipText"
+                   FontSize="11.5"
+                   FontWeight="SemiBold"
+                   Foreground="White"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   TextAlignment="Center"/>
+      </Border>
+    </Popup>
+
+    <Grid Grid.Row="0">
+      <Grid x:Name="_barTrack"
+            Height="6"
+            Margin="22,0"
+            VerticalAlignment="Center"
+            ClipToBounds="True"
+            IsHitTestVisible="False">
+        <Border Background="{StaticResource BgTertiaryBrush}"
+                BorderBrush="{StaticResource BorderHoverBrush}"
+                BorderThickness="1"
+                CornerRadius="3"/>
+        <Border x:Name="_barProgress"
+                Height="6"
+                Width="0"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                Background="{StaticResource AccentPrimaryBrush}"
+                CornerRadius="3"
+                IsHitTestVisible="False"/>
+      </Grid>
+      <Border x:Name="_focusCue" Classes="slider-focus-cue"/>
+      <Slider x:Name="_slider"
+              Theme="{StaticResource AnimatedSliderTheme}"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Center"
+              IsSnapToTickEnabled="True"
+              AutomationProperties.Name="数值"/>
+    </Grid>
+
+    <Grid Grid.Row="1" ColumnDefinitions="*,*" Margin="22,-10,22,0">
+      <TextBlock x:Name="_minimumText"
+                 Grid.Column="0"
+                 FontSize="11.5"
+                 Foreground="{StaticResource TextTertiaryBrush}"
+                 HorizontalAlignment="Left"/>
+      <TextBlock x:Name="_maximumText"
+                 Grid.Column="1"
+                 FontSize="11.5"
+                 Foreground="{StaticResource TextTertiaryBrush}"
+                 HorizontalAlignment="Right"/>
+    </Grid>
+  </Grid>
+</UserControl>

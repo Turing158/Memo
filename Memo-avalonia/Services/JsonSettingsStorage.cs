@@ -23,7 +23,14 @@ public class JsonSettingsStorage {
         try {
             if (!File.Exists(_filePath)) return AppSettings.CreateDefault();
             var json = await File.ReadAllTextAsync(_filePath);
-            return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? AppSettings.CreateDefault();
+            var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? AppSettings.CreateDefault();
+            if (!Enum.IsDefined(settings.MotionMode)) settings.MotionMode = MotionMode.AlwaysOn;
+            settings.MainWindowDockSize = Math.Clamp(
+                settings.MainWindowDockSize,
+                AppSettings.MinimumMainWindowDockSize,
+                AppSettings.MaximumMainWindowDockSize);
+            if (!settings.MainWindowDockEnabled) settings.MainWindowDocked = false;
+            return settings;
         }
         catch (Exception ex) {
             System.Diagnostics.Debug.WriteLine($"[SettingsStorage] Load failed: {ex.Message}");

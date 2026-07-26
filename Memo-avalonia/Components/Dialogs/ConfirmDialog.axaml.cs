@@ -14,6 +14,7 @@ public partial class ConfirmDialog : Window{
         _transition = new WindowTransitionController(this, this.FindControl<Border>("_confirmShell")!);
         _transition.PrepareOpen();
         Opened += (_, _) => _transition.PlayOpen();
+        Closed += (_, _) => _transition?.Cancel();
     }
 
     public ConfirmDialog(string title, string message)

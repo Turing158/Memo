@@ -17,6 +17,10 @@
         Background="Transparent"
         TransparencyLevelHint="Transparent">
 
+  <Window.Resources>
+    <StreamGeometry x:Key="PopoutToolbarIcon">M4,5H20V7H4ZM4,11H20V13H4ZM4,17H20V19H4Z</StreamGeometry>
+  </Window.Resources>
+
   <Window.Styles>
     <Style Selector="Border.PopoutNoteSurface">
       <Setter Property="Background" Value="Transparent"/>
@@ -99,6 +103,9 @@
                       Orientation="Horizontal"
                       VerticalAlignment="Center"
                       Spacing="2">
+            <Button Classes="TitleBarBtn" CornerRadius="6" Click="OnToolbarToggle" x:Name="_toolbarButton" ToolTip.Tip="显示 Markdown 工具栏" Width="26" Height="26" MinWidth="26" MinHeight="26">
+              <PathIcon Data="{StaticResource PopoutToolbarIcon}" Width="13" Height="13" Foreground="{StaticResource IconDefaultBrush}"/>
+            </Button>
             <Button Classes="TitleBarBtn" CornerRadius="6" Click="OnPinToggle" x:Name="_pinButton" ToolTip.Tip="置顶" Width="26" Height="26" MinWidth="26" MinHeight="26">
               <PathIcon Data="{StaticResource PinIcon}" Width="13" Height="13" Foreground="{StaticResource IconDefaultBrush}">
                 <PathIcon.RenderTransform>
@@ -119,7 +126,8 @@
         <Grid RowDefinitions="Auto,*" Margin="8,1,8,8">
           <Grid Grid.Row="0"
                 Cursor="Hand"
-                Tapped="OnTimeTapped">
+                Tapped="OnTimeTapped"
+                Margin="0,5,0,0">
             <TextBlock x:Name="_timeFullText"
                        Text="{Binding FullTime}"
                        HorizontalAlignment="Center"
@@ -142,8 +150,12 @@
 
           <Border Grid.Row="1"
                   x:Name="_noteSurface"
-                  Classes="PopoutNoteSurface">
+                  Classes="PopoutNoteSurface"
+                  Margin="0,-5,0,0">
             <components:MarkdownEditor x:Name="_markdownEditor"
+                                       HideToolbarInPreview="True"
+                                       BlendBordersInPreview="True"
+                                       UseBorderlessChrome="True"
                                        HorizontalAlignment="Stretch"
                                        VerticalAlignment="Stretch"/>
           </Border>

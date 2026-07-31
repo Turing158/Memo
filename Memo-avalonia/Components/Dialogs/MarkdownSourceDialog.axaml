@@ -1,0 +1,9 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Memo.Components.Dialogs.MarkdownSourceDialog" Title="编辑 Markdown 源码" Width="620" Height="480" MinWidth="420" MinHeight="300" WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="18">
+    <TextBlock Text="编辑 Markdown 源码" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+    <TextBox x:Name="_sourceBox" Grid.Row="1" AcceptsReturn="True" TextWrapping="NoWrap" FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI, monospace" FontSize="13" Background="{StaticResource SurfacePrimaryBrush}" Foreground="{StaticResource TextPrimaryBrush}" CaretBrush="{StaticResource AccentPrimaryBrush}" SelectionBrush="{StaticResource AccentMutedBrush}" BorderBrush="{StaticResource BorderDefaultBrush}" Padding="10" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" KeyDown="OnKeyDown"/>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
+      <Button Content="取消" MinWidth="76" Click="OnCancel"/><Button Content="确认" MinWidth="76" Background="{StaticResource AccentPrimaryBrush}" Foreground="White" Click="OnConfirm"/>
+    </StackPanel>
+  </Grid>
+</Window>

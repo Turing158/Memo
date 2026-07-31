@@ -63,6 +63,8 @@ public partial class MainWindow {
     private FrameAnimation? _dockAnimation;
     private FrameAnimation? _dockScaleAnimation;
     private DispatcherTimer? _expandedBoundsSaveTimer;
+    private bool _expandedStartupSyncPending;
+    private bool _isSynchronizingExpandedStartupBounds;
     private PixelPoint _animationFromPosition;
     private double _animationFromWidth;
     private double _animationFromHeight;
@@ -159,9 +161,56 @@ public partial class MainWindow {
         }
         else {
             PrepareExpandedStartup(settings);
+            _expandedStartupSyncPending = true;
         }
 
         ShowWithOpenTransition(force: true);
+    }
+
+    private void CompleteOpenAfterShow() {
+        if (!_expandedStartupSyncPending || _dockState != DockState.Expanded) {
+            _expandedStartupSyncPending = false;
+            PlayOpenTransition();
+            return;
+        }
+
+        _expandedStartupSyncPending = false;
+        SynchronizeExpandedStartupBounds();
+
+        // Let Avalonia complete the invalidated layout before the first animation frame.
+        Dispatcher.UIThread.Post(() => {
+            _expandedBoundsSaveTimer?.Stop();
+            _expandedBoundsSaveTimer = null;
+            _isSynchronizingExpandedStartupBounds = false;
+            PlayOpenTransition();
+        }, DispatcherPriority.Background);
+    }
+
+    private void SynchronizeExpandedStartupBounds() {
+        var screen = (_hasExpandedBounds ? Screens.ScreenFromPoint(_expandedPosition) : null)
+            ?? Screens.ScreenFromWindow(this)
+            ?? Screens.Primary;
+        if (screen == null) return;
+
+        var requestedPosition = _hasExpandedBounds ? _expandedPosition : Position;
+        var bounds = ClampExpandedBounds(screen, requestedPosition, _expandedWidth, _expandedHeight);
+
+        _isSynchronizingExpandedStartupBounds = true;
+        _expandedBoundsSaveTimer?.Stop();
+        _expandedBoundsSaveTimer = null;
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        SubmitAnimatedWindowBounds(bounds.Position, bounds.Width, bounds.Height, synchronizeAvalonia: true);
+        SaveExpandedBounds(bounds.Position, bounds.Width, bounds.Height);
+
+        InvalidateMeasure();
+        InvalidateArrange();
+        InvalidateVisual();
+        _expandedSurface?.InvalidateMeasure();
+        _expandedSurface?.InvalidateArrange();
+        _expandedSurface?.InvalidateVisual();
+        _expandedContent?.InvalidateMeasure();
+        _expandedContent?.InvalidateArrange();
+        _expandedContent?.InvalidateVisual();
     }
 
     public void CopyRuntimeWindowStateTo(AppSettings target) {
@@ -1021,7 +1070,7 @@ public partial class MainWindow {
     }
 
     private void ScheduleExpandedBoundsSave() {
-        if (_dockState != DockState.Expanded || !IsVisible) return;
+        if (_dockState != DockState.Expanded || !IsVisible || _isSynchronizingExpandedStartupBounds) return;
         _expandedBoundsSaveTimer?.Stop();
         var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(400), DispatcherPriority.Background, (_, _) => { });
         timer.Tick += (_, _) => {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 
@@ -12,12 +13,18 @@ public static partial class MarkdownFormatter {
         MarkdownFormatCommand command) {
         var text = Normalize(source);
         NormalizeSelection(text, ref selectionStart, ref selectionEnd);
+        if (command is MarkdownFormatCommand.Bold or MarkdownFormatCommand.Italic or
+            MarkdownFormatCommand.Strikethrough or MarkdownFormatCommand.InlineCode)
+            text = BoldItalicRuns().Replace(text, match =>
+                selectionEnd > match.Index + 3 && selectionStart < match.Index + match.Length - 3
+                    ? $"**_{match.Groups[1].Value}_**"
+                    : match.Value);
 
         return command switch {
-            MarkdownFormatCommand.Bold => Wrap(text, selectionStart, selectionEnd, "**", "**", "粗体文本"),
-            MarkdownFormatCommand.Italic => Wrap(text, selectionStart, selectionEnd, "*", "*", "斜体文本"),
-            MarkdownFormatCommand.Strikethrough => Wrap(text, selectionStart, selectionEnd, "~~", "~~", "删除文本"),
-            MarkdownFormatCommand.InlineCode => Wrap(text, selectionStart, selectionEnd, "`", "`", "代码"),
+            MarkdownFormatCommand.Bold => ToggleInline(text, selectionStart, selectionEnd, "**", [BoldRuns(), BoldUnderscoreRuns()], "__"),
+            MarkdownFormatCommand.Italic => ToggleInline(text, selectionStart, selectionEnd, "*", [ItalicRuns(), ItalicUnderscoreRuns()], "_"),
+            MarkdownFormatCommand.Strikethrough => ToggleInline(text, selectionStart, selectionEnd, "~~", [StrikeRuns()]),
+            MarkdownFormatCommand.InlineCode => ToggleInline(text, selectionStart, selectionEnd, "`", [CodeRuns()]),
             MarkdownFormatCommand.Heading => PrefixLines(text, selectionStart, selectionEnd, "# ", HeadingPrefix()),
             MarkdownFormatCommand.BulletList => PrefixLines(text, selectionStart, selectionEnd, "- ", ListPrefix()),
             MarkdownFormatCommand.OrderedList => PrefixOrderedLines(text, selectionStart, selectionEnd),
@@ -46,26 +53,95 @@ public static partial class MarkdownFormatter {
     public static bool HasMeaningfulContent(string? source) =>
         MarkdownSummary.ExtractLines(source, 1).Count > 0;
 
-    private static MarkdownEditResult Wrap(
+    private static MarkdownEditResult ToggleInline(
         string text,
         int start,
         int end,
-        string open,
-        string close,
-        string placeholder) {
-        var hasSelection = end > start;
-        var selected = hasSelection ? text[start..end] : placeholder;
+        string delimiter,
+        IReadOnlyList<Regex> syntaxes,
+        string? adjacentAsteriskDelimiter = null) {
+        if (end <= start) return new MarkdownEditResult(text, start, end);
 
-        if (hasSelection && start >= open.Length && end + close.Length <= text.Length &&
-            text.AsSpan(start - open.Length, open.Length).SequenceEqual(open) &&
-            text.AsSpan(end, close.Length).SequenceEqual(close)) {
-            var unwrapped = text.Remove(end, close.Length).Remove(start - open.Length, open.Length);
-            return new MarkdownEditResult(unwrapped, start - open.Length, end - open.Length);
+        var matches = syntaxes.SelectMany(syntax => syntax.Matches(text).Cast<Match>())
+            .OrderBy(match => match.Index).ToArray();
+        var projection = new MarkdownDocumentModel(text);
+        var delimiterRanges = matches
+            .SelectMany(match => new[] {
+                (Start: match.Index, End: match.Index + delimiter.Length),
+                (Start: match.Index + match.Length - delimiter.Length, End: match.Index + match.Length),
+            }).OrderBy(range => range.Start).ToArray();
+
+        var baseText = new System.Text.StringBuilder(text.Length);
+        var originalToBase = new int[text.Length + 1];
+        var formatted = new List<bool>(text.Length);
+        var visibleCharacters = new List<bool>(text.Length);
+        var rangeIndex = 0;
+        for (var source = 0; source < text.Length;) {
+            originalToBase[source] = baseText.Length;
+            if (rangeIndex < delimiterRanges.Length && source == delimiterRanges[rangeIndex].Start) {
+                var rangeEnd = delimiterRanges[rangeIndex].End;
+                while (source < rangeEnd) originalToBase[++source] = baseText.Length;
+                rangeIndex++;
+                continue;
+            }
+            baseText.Append(text[source]);
+            var isVisible = projection.VisibleOffsetFromSource(source + 1) >
+                projection.VisibleOffsetFromSource(source);
+            visibleCharacters.Add(isVisible);
+            formatted.Add(isVisible && matches.Any(match =>
+                source >= match.Index + delimiter.Length &&
+                source < match.Index + match.Length - delimiter.Length));
+            originalToBase[++source] = baseText.Length;
         }
 
-        var replacement = open + selected + close;
-        var result = text[..start] + replacement + text[end..];
-        return new MarkdownEditResult(result, start + open.Length, start + open.Length + selected.Length);
+        var baseStart = originalToBase[start];
+        var baseEnd = originalToBase[end];
+        if (baseEnd <= baseStart) return new MarkdownEditResult(text, start, end);
+        var selectedVisible = Enumerable.Range(baseStart, baseEnd - baseStart)
+            .Where(index => visibleCharacters[index]).ToArray();
+        if (selectedVisible.Length == 0) return new MarkdownEditResult(text, start, end);
+        var remove = selectedVisible.All(index => formatted[index]);
+        foreach (var index in selectedVisible) formatted[index] = !remove;
+        FillFormattingAcrossHiddenSyntax(formatted, visibleCharacters);
+
+        var output = new System.Text.StringBuilder(baseText.Length + delimiter.Length * 4);
+        var baseToOutput = new int[baseText.Length + 1];
+        var active = false;
+        var activeDelimiter = delimiter;
+        for (var index = 0; index < baseText.Length; index++) {
+            if (formatted[index] != active) {
+                if (formatted[index]) {
+                    var runEnd = index;
+                    while (runEnd < formatted.Count && formatted[runEnd]) runEnd++;
+                    activeDelimiter = adjacentAsteriskDelimiter != null &&
+                        ((index > 0 && baseText[index - 1] == '*') ||
+                         (runEnd < baseText.Length && baseText[runEnd] == '*'))
+                        ? adjacentAsteriskDelimiter
+                        : delimiter;
+                }
+                output.Append(activeDelimiter);
+                active = formatted[index];
+            }
+            baseToOutput[index] = output.Length;
+            output.Append(baseText[index]);
+        }
+        if (active) output.Append(activeDelimiter);
+        baseToOutput[baseText.Length] = active ? output.Length - activeDelimiter.Length : output.Length;
+        return new MarkdownEditResult(output.ToString(), baseToOutput[baseStart], baseToOutput[baseEnd]);
+    }
+
+    private static void FillFormattingAcrossHiddenSyntax(
+        IList<bool> formatted,
+        IReadOnlyList<bool> visibleCharacters) {
+        for (var index = 0; index < visibleCharacters.Count; index++) {
+            if (visibleCharacters[index]) continue;
+            var left = index - 1;
+            while (left >= 0 && !visibleCharacters[left]) left--;
+            var right = index + 1;
+            while (right < visibleCharacters.Count && !visibleCharacters[right]) right++;
+            if (left >= 0 && right < visibleCharacters.Count && formatted[left] == formatted[right])
+                formatted[index] = formatted[left];
+        }
     }
 
     private static MarkdownEditResult WrapBlock(
@@ -172,4 +248,25 @@ public static partial class MarkdownFormatter {
 
     [GeneratedRegex(@"^\s*>\s?")]
     private static partial Regex QuotePrefix();
+
+    [GeneratedRegex(@"(?<!\*)\*\*(?!\*)(?=\S)(.+?)(?<=\S)\*\*(?!\*)", RegexOptions.Singleline)]
+    private static partial Regex BoldRuns();
+
+    [GeneratedRegex(@"(?<!\*)\*\*\*(?=\S)(.+?)(?<=\S)\*\*\*(?!\*)", RegexOptions.Singleline)]
+    private static partial Regex BoldItalicRuns();
+
+    [GeneratedRegex(@"(?<!_)__(?!_)(?=\S)(.+?)(?<=\S)__(?!_)", RegexOptions.Singleline)]
+    private static partial Regex BoldUnderscoreRuns();
+
+    [GeneratedRegex(@"(?<!\*)\*(?!\*)(?=\S)(.+?)(?<=\S)\*(?!\*)", RegexOptions.Singleline)]
+    private static partial Regex ItalicRuns();
+
+    [GeneratedRegex(@"(?<!_)_(?!_)(?=\S)(.+?)(?<=\S)_(?!_)", RegexOptions.Singleline)]
+    private static partial Regex ItalicUnderscoreRuns();
+
+    [GeneratedRegex(@"~~(?=\S)(.+?)(?<=\S)~~", RegexOptions.Singleline)]
+    private static partial Regex StrikeRuns();
+
+    [GeneratedRegex(@"(?<!`)`([^`\n]+)`(?!`)")]
+    private static partial Regex CodeRuns();
 }

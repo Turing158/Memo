@@ -77,8 +77,11 @@ public partial class MainWindow : Window {
     // 长按拖拽重排管理器
     private DragReorderManager? _dragManager;
 
-    public MainWindow() {
+    public MainWindow() : this(null) { }
+
+    internal MainWindow(MainViewModel? viewModel) {
         InitializeComponent();
+        if (viewModel != null) DataContext = viewModel;
         _windowTransition = new WindowTransitionController(this, this.FindControl<Border>("_windowShell")!);
         InitializeDockingInteraction();
         PrepareWindowOpenState();
@@ -95,13 +98,11 @@ public partial class MainWindow : Window {
 
         _markdownEditor.SaveRequestedAsync = SaveMarkdownAsync;
         _markdownEditor.CancelRequestedAsync = CancelMarkdownAsync;
-        _markdownEditor.EditRequested += async (_, _) => {
-            if (_displayedMemo != null) await BeginMemoEditAsync(_displayedMemo);
-        };
         _markdownEditor.NewRequested += async (_, _) => await StartNewComposerAsync();
 
         list.AddHandler(InputElement.DoubleTappedEvent, OnMemoDoubleTapped,
-            RoutingStrategies.Tunnel | RoutingStrategies.Bubble);
+            RoutingStrategies.Bubble);
+        ViewModel.MemoDeleted += OnMemoDeleted;
         Closed += OnMainWindowClosed;
 
         this.Loaded += async (_, _) => {
@@ -153,7 +154,7 @@ public partial class MainWindow : Window {
         ShowInTaskbar = false;
         Show();
         Activate();
-        Dispatcher.UIThread.Post(PlayOpenTransition, DispatcherPriority.Render);
+        Dispatcher.UIThread.Post(CompleteOpenAfterShow, DispatcherPriority.Render);
     }
 
     public void HideToTrayWithTransition() {
@@ -184,14 +185,7 @@ public partial class MainWindow : Window {
 
         var memo = _displayedMemo;
         if (memo == null) return false;
-        if (request.CompleteEditing) {
-            await ViewModel.CompleteItemEditAndSaveAsync(memo.Id, request.Markdown);
-            MemoEditCoordinator.Shared.Release(memo.Id, this);
-            UpdateEditVisual();
-        }
-        else {
-            await ViewModel.UpdateItemAndSaveAsync(memo.Id, request.Markdown);
-        }
+        await ViewModel.UpdateItemAndSaveAsync(memo.Id, request.Markdown);
         return true;
     }
 
@@ -199,18 +193,17 @@ public partial class MainWindow : Window {
         var memo = _displayedMemo;
         if (memo == null) return;
         await ViewModel.UpdateItemAndSaveAsync(memo.Id, restoreMarkdown);
-        MemoEditCoordinator.Shared.Release(memo.Id, this);
-        ViewModel.EndEdit();
         UpdateEditVisual();
     }
 
     private async Task BeginMemoEditAsync(MemoItem item) {
-        if (_markdownEditor.IsEditing && !_markdownEditor.IsNewMemo) {
+        if (!_markdownEditor.IsNewMemo) {
             if (ReferenceEquals(_displayedMemo, item)) {
                 _markdownEditor.FocusEditor();
                 return;
             }
             if (!await _markdownEditor.CompleteEditingAsync()) return;
+            if (_displayedMemo != null) MemoEditCoordinator.Shared.Release(_displayedMemo.Id, this);
         }
         else if (_markdownEditor.IsNewMemo) {
             _newMemoDraft = _markdownEditor.Markdown;
@@ -225,14 +218,18 @@ public partial class MainWindow : Window {
     }
 
     private async Task<bool> RelinquishActiveEditorAsync() {
-        if (_markdownEditor.IsEditing && !_markdownEditor.IsNewMemo)
-            return await _markdownEditor.CompleteEditingAsync();
+        if (_markdownEditor.IsNewMemo) return true;
+        if (!await _markdownEditor.CompleteEditingAsync()) return false;
+        if (_displayedMemo != null) MemoEditCoordinator.Shared.Release(_displayedMemo.Id, this);
+        ViewModel.EndEdit();
+        SetDisplayedMemo(null);
+        _markdownEditor.BeginNew();
+        UpdateEditVisual();
         return true;
     }
 
     private async Task StartNewComposerAsync() {
-        if (_markdownEditor.IsEditing && !_markdownEditor.IsNewMemo &&
-            !await _markdownEditor.CompleteEditingAsync()) return;
+        if (!_markdownEditor.IsNewMemo && !await _markdownEditor.CompleteEditingAsync()) return;
 
         if (_displayedMemo != null)
             MemoEditCoordinator.Shared.Release(_displayedMemo.Id, this);
@@ -257,8 +254,25 @@ public partial class MainWindow : Window {
     }
 
     private async void OnMemoDoubleTapped(object? sender, RoutedEventArgs e) {
+        if (e.Source is Visual source && source.GetVisualAncestors().Append(source).OfType<Button>().Any())
+            return;
         var item = FindMemoItemFromSource(e.Source);
         if (item == null) return;
+        await ToggleMemoEditAsync(item);
+    }
+
+    internal async Task ToggleMemoEditAsync(MemoItem item) {
+        if (!_markdownEditor.IsNewMemo && ReferenceEquals(_displayedMemo, item)) {
+            if (!await _markdownEditor.CompleteEditingAsync()) return;
+            MemoEditCoordinator.Shared.Release(item.Id, this);
+            ViewModel.EndEdit();
+            SetDisplayedMemo(null);
+            var draft = _newMemoDraft;
+            _newMemoDraft = string.Empty;
+            _markdownEditor.BeginNew(draft);
+            UpdateEditVisual();
+            return;
+        }
         await BeginMemoEditAsync(item);
     }
 
@@ -324,19 +338,18 @@ public partial class MainWindow : Window {
     /// 无动画的直接删除（原逻辑）。
     /// </summary>
     private void DeleteItemImmediate(MemoItem item) {
-        var vm = ViewModel;
-        bool wasEditing = vm.EditingId == item.Id;
-        vm.DeleteItem(item.Id); // ViewModel 内部清空 EditingId
-        HandleDeletedEditingMemo(item, wasEditing);
+        ViewModel.DeleteItem(item.Id);
         UpdateEditVisual();
     }
 
-    private void HandleDeletedEditingMemo(MemoItem item, bool wasEditing) {
-        if (!wasEditing || !ReferenceEquals(_displayedMemo, item)) return;
-        MemoEditCoordinator.Shared.Release(item.Id, this);
-        var draft = _markdownEditor.Markdown;
+    private void OnMemoDeleted(Guid id) {
+        if (_displayedMemo?.Id != id) return;
+        _markdownEditor.AbortForSourceDeletion();
+        MemoEditCoordinator.Shared.Release(id, this);
+        ViewModel.EndEdit();
         SetDisplayedMemo(null);
-        _markdownEditor.BeginNew(draft);
+        _newMemoDraft = string.Empty;
+        _markdownEditor.BeginNew();
         UpdateEditVisual();
     }
 
@@ -396,10 +409,8 @@ public partial class MainWindow : Window {
         var requestVersion = ++_deleteRequestVersion;
 
         // 1. 先执行真正的删除 → 布局瞬间刷新，下方项跳到新位置
-        bool wasEditing = vm.EditingId == item.Id;
         vm.DeleteItem(item.Id);
         UpdateEditVisual();
-        HandleDeletedEditingMemo(item, wasEditing);
         if (exitVisual != null) StartDeleteExitAnimation(exitVisual);
 
         // 2. 等下一次布局完成后，再给下方项施加反向偏移并启动滑动动画
@@ -589,6 +600,7 @@ public partial class MainWindow : Window {
     }
 
     private void OnMainWindowClosed(object? sender, EventArgs e) {
+        ViewModel.MemoDeleted -= OnMemoDeleted;
         if (_displayedMemo != null) {
             _displayedMemo.PropertyChanged -= OnDisplayedMemoChanged;
             MemoEditCoordinator.Shared.Release(_displayedMemo.Id, this);

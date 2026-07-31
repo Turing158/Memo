@@ -39,6 +39,7 @@ public partial class App : Application{
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) {
             var mainWindow = new MainWindow();
             _mainWindow = mainWindow;
+            mainWindow.MemoViewModel.MemoDeleted += OnMemoDeleted;
             _latestMemoWindow = mainWindow;
             desktop.MainWindow = mainWindow;
 
@@ -160,7 +161,7 @@ public partial class App : Application{
         popout.Activated += (_, _) => _latestMemoWindow = popout;
         popout.Closed += (_, _) => {
             if (_positionAnimations.Remove(popout, out var animation)) animation.Cancel();
-            memo.PopoutRefCount--;
+            memo.PopoutRefCount = Math.Max(0, memo.PopoutRefCount - 1);
             _memoPopouts.Remove(popout);
             if (ReferenceEquals(_latestMemoWindow, popout)) {
                 _latestMemoWindow = (Window?)_memoPopouts.LastOrDefault() ?? _mainWindow;
@@ -169,6 +170,15 @@ public partial class App : Application{
 
         popout.Show();
         popout.Activate();
+    }
+
+    private void OnMemoDeleted(Guid memoId) => ClosePopoutsForDeletedMemo(_memoPopouts, memoId);
+
+    internal static void ClosePopoutsForDeletedMemo(
+        IEnumerable<MemoPopoutWindow> popouts,
+        Guid memoId) {
+        foreach (var popout in popouts.Where(window => window.Memo.Id == memoId).ToArray())
+            popout.CloseBecauseSourceDeleted();
     }
 
     private PixelPoint ClampPopoutPosition(PixelPoint pointerPosition) {

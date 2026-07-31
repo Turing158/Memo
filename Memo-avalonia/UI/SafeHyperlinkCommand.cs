@@ -5,13 +5,18 @@ using System.Windows.Input;
 namespace Memo.UI;
 
 internal sealed class SafeHyperlinkCommand : ICommand {
+    private readonly Action<Uri> _launch;
+
+    public SafeHyperlinkCommand(Action<Uri>? launch = null) =>
+        _launch = launch ?? (uri => Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }));
+
     public event EventHandler? CanExecuteChanged { add { } remove { } }
 
     public bool CanExecute(object? parameter) => TryGetSafeUri(parameter, out _);
 
     public void Execute(object? parameter) {
         if (!TryGetSafeUri(parameter, out var uri)) return;
-        Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        _launch(uri);
     }
 
     private static bool TryGetSafeUri(object? parameter, out Uri uri) {

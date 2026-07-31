@@ -15,13 +15,14 @@ public class MainViewModel {
     private readonly JsonMemoStorage _storage;
 
     public ObservableCollection<MemoItem> Memos { get; } = new();
+    public event Action<Guid>? MemoDeleted;
 
     /// <summary>当前正在编辑的备忘录 Id；null 表示非编辑态（提交会视为新增）。</summary>
     public Guid? EditingId { get; private set; }
 
-    public MainViewModel() {
-        _storage = new JsonMemoStorage();
-    }
+    public MainViewModel() : this(new JsonMemoStorage()) { }
+
+    internal MainViewModel(JsonMemoStorage storage) => _storage = storage;
 
     public async Task LoadAsync() {
         var items = await _storage.LoadAsync();
@@ -127,6 +128,7 @@ public class MainViewModel {
         if (item == null) return;
         Memos.Remove(item);
         if (EditingId == id) EditingId = null;
+        MemoDeleted?.Invoke(id);
         _ = _storage.SaveAsync(Memos);
     }
 

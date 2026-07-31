@@ -18,7 +18,15 @@ public class JsonMemoStorage {
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    public JsonMemoStorage() {
+    public JsonMemoStorage() : this(null) { }
+
+    internal JsonMemoStorage(string? filePath) {
+        if (!string.IsNullOrWhiteSpace(filePath)) {
+            var directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
+            if (directory != null) Directory.CreateDirectory(directory);
+            _filePath = Path.GetFullPath(filePath);
+            return;
+        }
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var dir = Path.Combine(appData, "Memo");
         Directory.CreateDirectory(dir);

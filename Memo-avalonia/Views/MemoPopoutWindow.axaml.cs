@@ -21,7 +21,9 @@ public partial class MemoPopoutWindow : Window {
     private MemoItem? _memo;
     private bool _isClosingAfterTransition;
     private bool _isPinned;
+    private bool _showPreviewToolbar;
     private bool _showFullTime;
+    private bool _sourceDeleted;
 
     /// <summary>当前窗体关联的备忘录项。</summary>
     public MemoItem Memo => _memo!;
@@ -30,12 +32,12 @@ public partial class MemoPopoutWindow : Window {
         InitializeComponent();
         _markdownEditor.SaveRequestedAsync = SaveMarkdownAsync;
         _markdownEditor.CancelRequestedAsync = CancelMarkdownAsync;
-        _markdownEditor.EditRequested += async (_, _) => await BeginEditAsync();
+        _markdownEditor.EditingCompleted += (_, _) => UpdateToolbarButtonVisual();
 
         Loaded += (_, _) => this.AssignResizeCursors();
         _transition = new WindowTransitionController(this, this.FindControl<Border>("_popoutShell")!);
         _transition.PrepareOpen();
-        Opened += (_, _) => _transition.PlayOpen();
+        Opened += async (_, _) => { _transition.PlayOpen(); await BeginEditAsync(); };
         Closed += OnWindowClosed;
     }
 
@@ -86,37 +88,43 @@ public partial class MemoPopoutWindow : Window {
 
     private void OnPinToggle(object? sender, RoutedEventArgs e) => TogglePinned();
 
+    private void OnToolbarToggle(object? sender, RoutedEventArgs e) {
+        _showPreviewToolbar = !_showPreviewToolbar;
+        _markdownEditor.HideToolbarInPreview = !_showPreviewToolbar;
+        UpdateToolbarButtonVisual();
+    }
+
     private async void OnCloseClick(object? sender, RoutedEventArgs e) {
-        if (_markdownEditor.IsEditing && !await _markdownEditor.CompleteEditingAsync()) return;
+        if (!await _markdownEditor.CompleteEditingAsync()) return;
+        if (_memo != null) MemoEditCoordinator.Shared.Release(_memo.Id, this);
         CloseWithTransition();
     }
 
     private async Task BeginEditAsync() {
-        if (_memo == null || _markdownEditor.IsEditing) return;
+        if (_sourceDeleted || _memo == null || MemoEditCoordinator.Shared.IsOwner(_memo.Id, this)) return;
         if (!await MemoEditCoordinator.Shared.AcquireAsync(_memo.Id, this, RelinquishEditorAsync))
             return;
         _markdownEditor.BeginExistingEdit(_memo.Content);
+        UpdateToolbarButtonVisual();
     }
 
     private async Task<bool> RelinquishEditorAsync() {
-        if (_markdownEditor.IsEditing)
-            return await _markdownEditor.CompleteEditingAsync();
+        if (_sourceDeleted) return true;
+        if (!await _markdownEditor.CompleteEditingAsync()) return false;
+        if (_memo != null) MemoEditCoordinator.Shared.Release(_memo.Id, this);
         return true;
     }
 
     private async Task<bool> SaveMarkdownAsync(MarkdownSaveRequest request) {
-        if (_memo == null || _saveMemo == null || request.IsNewMemo) return false;
+        if (_sourceDeleted || _memo == null || _saveMemo == null || request.IsNewMemo) return false;
         await _saveMemo(_memo, request.Markdown);
-        if (request.CompleteEditing)
-            MemoEditCoordinator.Shared.Release(_memo.Id, this);
         UpdateTitle(_memo);
         return true;
     }
 
     private async Task CancelMarkdownAsync(string restoreMarkdown) {
-        if (_memo == null || _saveMemo == null) return;
+        if (_sourceDeleted || _memo == null || _saveMemo == null) return;
         await _saveMemo(_memo, restoreMarkdown);
-        MemoEditCoordinator.Shared.Release(_memo.Id, this);
         UpdateTitle(_memo);
     }
 
@@ -149,6 +157,26 @@ public partial class MemoPopoutWindow : Window {
             var target = _isPinned ? -45 : 0;
             MotionAnimations.AnimateRotation(pi, this, target, animate: IsVisible);
         }
+    }
+
+    internal void CloseBecauseSourceDeleted() {
+        if (_sourceDeleted) return;
+        _sourceDeleted = true;
+        _markdownEditor.AbortForSourceDeletion();
+        if (_memo != null) MemoEditCoordinator.Shared.Release(_memo.Id, this);
+        _transition.Cancel();
+        Close();
+    }
+
+    private void UpdateToolbarButtonVisual() {
+        var button = this.FindControl<Button>("_toolbarButton");
+        if (button == null) return;
+
+        button.IsVisible = true;
+        button.Classes.Set("PinActive", _showPreviewToolbar);
+        ToolTip.SetTip(button, _showPreviewToolbar
+            ? "隐藏 Markdown 工具栏"
+            : "显示 Markdown 工具栏");
     }
 
     private void OnTimeTapped(object? sender, TappedEventArgs e) {

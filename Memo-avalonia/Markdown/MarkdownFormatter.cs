@@ -25,15 +25,18 @@ public static partial class MarkdownFormatter {
             MarkdownFormatCommand.Italic => ToggleInline(text, selectionStart, selectionEnd, "*", [ItalicRuns(), ItalicUnderscoreRuns()], "_"),
             MarkdownFormatCommand.Strikethrough => ToggleInline(text, selectionStart, selectionEnd, "~~", [StrikeRuns()]),
             MarkdownFormatCommand.InlineCode => ToggleInline(text, selectionStart, selectionEnd, "`", [CodeRuns()]),
-            MarkdownFormatCommand.Heading => PrefixLines(text, selectionStart, selectionEnd, "# ", HeadingPrefix()),
+            MarkdownFormatCommand.Heading => SetHeadingLevel(text, selectionStart, selectionEnd, 1),
+            MarkdownFormatCommand.Heading2 => SetHeadingLevel(text, selectionStart, selectionEnd, 2),
+            MarkdownFormatCommand.Heading3 => SetHeadingLevel(text, selectionStart, selectionEnd, 3),
+            MarkdownFormatCommand.Heading4 => SetHeadingLevel(text, selectionStart, selectionEnd, 4),
             MarkdownFormatCommand.BulletList => PrefixLines(text, selectionStart, selectionEnd, "- ", ListPrefix()),
             MarkdownFormatCommand.OrderedList => PrefixOrderedLines(text, selectionStart, selectionEnd),
             MarkdownFormatCommand.TaskList => PrefixLines(text, selectionStart, selectionEnd, "- [ ] ", TaskPrefix()),
             MarkdownFormatCommand.Quote => PrefixLines(text, selectionStart, selectionEnd, "> ", QuotePrefix()),
             MarkdownFormatCommand.CodeBlock => WrapBlock(text, selectionStart, selectionEnd, "```\n", "\n```", "代码"),
             MarkdownFormatCommand.Link => InsertLink(text, selectionStart, selectionEnd),
-            MarkdownFormatCommand.HorizontalRule => InsertBlock(text, selectionStart, selectionEnd, "---"),
-            MarkdownFormatCommand.Table => InsertBlock(text, selectionStart, selectionEnd,
+            MarkdownFormatCommand.HorizontalRule => InsertHorizontalRule(text, selectionStart, selectionEnd),
+            MarkdownFormatCommand.Table => InsertTable(text, selectionStart, selectionEnd,
                 "| 列 1 | 列 2 |\n| --- | --- |\n| 内容 | 内容 |"),
             _ => new MarkdownEditResult(text, selectionStart, selectionEnd),
         };
@@ -178,6 +181,36 @@ public static partial class MarkdownFormatter {
         return new MarkdownEditResult(result, caret, caret);
     }
 
+    private static MarkdownEditResult InsertHorizontalRule(string text, int start, int end) {
+        NormalizeSelection(text, ref start, ref end);
+        var leadingBreaks = 0;
+        for (var index = start - 1; index >= 0 && text[index] == '\n'; index--)
+            leadingBreaks++;
+        // A rule at the beginning of the document does not need a separator.
+        var requiredLeadingBreaks = start == 0 ? 0 : 2;
+        var leading = new string('\n', Math.Max(0, requiredLeadingBreaks - leadingBreaks));
+        var trailingBreaks = 0;
+        while (end + trailingBreaks < text.Length && text[end + trailingBreaks] == '\n')
+            trailingBreaks++;
+        var trailing = trailingBreaks == 0 ? "\n" : string.Empty;
+        var result = text[..start] + leading + "---" + trailing + text[end..];
+        var caret = start + leading.Length + 3 + trailing.Length;
+        return new MarkdownEditResult(result, caret, caret);
+    }
+
+    private static MarkdownEditResult InsertTable(string text, int start, int end, string table) {
+        NormalizeSelection(text, ref start, ref end);
+        var leading = start > 0 && text[start - 1] != '\n' ? "\n" : string.Empty;
+        var existingLineBreaks = 0;
+        while (end + existingLineBreaks < text.Length &&
+               text[end + existingLineBreaks] == '\n' && existingLineBreaks < 3)
+            existingLineBreaks++;
+        var addedLineBreaks = new string('\n', 3 - existingLineBreaks);
+        var result = text[..start] + leading + table + addedLineBreaks + text[end..];
+        var caret = start + leading.Length + table.Length + 3;
+        return new MarkdownEditResult(result, caret, caret);
+    }
+
     private static MarkdownEditResult PrefixLines(
         string text,
         int start,
@@ -194,6 +227,25 @@ public static partial class MarkdownFormatter {
             lines[index] = allPrefixed
                 ? removablePrefix.Replace(lines[index], string.Empty, 1)
                 : prefix + lines[index];
+        }
+
+        var replacement = string.Join("\n", lines);
+        var result = text[..lineStart] + replacement + text[lineEnd..];
+        return new MarkdownEditResult(result, lineStart, lineStart + replacement.Length);
+    }
+
+    private static MarkdownEditResult SetHeadingLevel(string text, int start, int end, int level) {
+        GetLineRange(text, start, end, out var lineStart, out var lineEnd);
+        var lines = text[lineStart..lineEnd].Split('\n');
+        var requestedPrefix = new string('#', level) + " ";
+        var nonEmptyLines = lines.Where(line => line.Length > 0).ToArray();
+        var removeHeading = nonEmptyLines.Length > 0 &&
+            nonEmptyLines.All(line => line.StartsWith(requestedPrefix, StringComparison.Ordinal));
+
+        for (var index = 0; index < lines.Length; index++) {
+            if (lines[index].Length == 0) continue;
+            var content = HeadingPrefix().Replace(lines[index], string.Empty, 1);
+            lines[index] = removeHeading ? content : requestedPrefix + content;
         }
 
         var replacement = string.Join("\n", lines);

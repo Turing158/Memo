@@ -69,6 +69,8 @@
     <SolidColorBrush x:Key="BgSecondaryBrush" Color="{StaticResource BgSecondary}"/>
     <SolidColorBrush x:Key="BgTertiaryBrush" Color="{StaticResource BgTertiary}"/>
     <SolidColorBrush x:Key="BgHoverBrush" Color="{StaticResource BgHover}"/>
+    <!-- Avalonia's named Transparent is #00FFFFFF; use transparent black for animated dark surfaces. -->
+    <SolidColorBrush x:Key="TransparentBrush" Color="#00000000"/>
 
     <!-- 表面 -->
     <SolidColorBrush x:Key="SurfacePrimaryBrush" Color="{StaticResource SurfacePrimary}"/>
@@ -109,6 +111,7 @@
     <SolidColorBrush x:Key="IconDefaultBrush" Color="{StaticResource IconDefault}"/>
     <SolidColorBrush x:Key="IconHoverBrush" Color="{StaticResource IconHover}"/>
     <SolidColorBrush x:Key="IconAccentBrush" Color="{StaticResource IconAccent}"/>
+    <SolidColorBrush x:Key="TextOnAccentBrush" Color="#FFFFFF"/>
 
     <!-- ══════════ 圆角 ══════════ -->
     <CornerRadius x:Key="RadiusSm">6</CornerRadius>
@@ -150,6 +153,9 @@
     <StreamGeometry x:Key="MemoIcon">
       M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z
     </StreamGeometry>
+    <StreamGeometry x:Key="MarkdownToolbarMenuCheckIcon">
+      M9.55,17.2L4.8,12.45L6.2,11.05L9.55,14.4L17.8,6.15L19.2,7.55Z
+    </StreamGeometry>
     <ControlTheme x:Key="MarkdownTableEdgeButtonTheme" TargetType="Button">
       <Setter Property="Template">
         <ControlTemplate>
@@ -188,7 +194,7 @@
       <Setter Property="Height" Value="34"/>
       <Setter Property="Margin" Value="0"/>
       <Setter Property="Padding" Value="7,0"/>
-      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Background" Value="{StaticResource TransparentBrush}"/>
       <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
       <Setter Property="FontSize" Value="12.5"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
@@ -230,12 +236,136 @@
         <Setter Property="Opacity" Value="0.42"/>
       </Style>
     </ControlTheme>
+    <ControlTheme x:Key="MarkdownToolbarMenuPresenterTheme" TargetType="MenuFlyoutPresenter">
+      <Setter Property="MinWidth" Value="124"/>
+      <Setter Property="MaxHeight" Value="520"/>
+      <Setter Property="Background" Value="{StaticResource SurfacePrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderEmphasisBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="12"/>
+      <Setter Property="Padding" Value="6"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}"
+                  ClipToBounds="True">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+              <ItemsPresenter Name="PART_ItemsPresenter"
+                              ItemsPanel="{TemplateBinding ItemsPanel}"/>
+            </ScrollViewer>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+    <ControlTheme x:Key="MarkdownToolbarMenuItemTheme" TargetType="MenuItem">
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="Padding" Value="7,0"/>
+      <Setter Property="Background" Value="{StaticResource TransparentBrush}"/>
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="{DynamicResource MotionFastDuration}" Easing="CubicEaseOut"/>
+          <BrushTransition Property="Foreground" Duration="{DynamicResource MotionFastDuration}" Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="PART_LayoutRoot"
+                  Background="{TemplateBinding Background}"
+                  CornerRadius="8"
+                  Padding="{TemplateBinding Padding}">
+            <Grid ColumnDefinitions="*,18"
+                  HorizontalAlignment="Stretch">
+              <ContentPresenter Name="PART_HeaderPresenter"
+                                Margin="0"
+                                Content="{TemplateBinding Header}"
+                                ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch"
+                                HorizontalContentAlignment="Left"
+                                VerticalContentAlignment="Center"
+                                RenderTransform="translate(0px, 0px)">
+                <ContentPresenter.Transitions>
+                  <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform"
+                                                   Duration="{DynamicResource MotionFastDuration}"
+                                                   Easing="CubicEaseOut"/>
+                  </Transitions>
+                </ContentPresenter.Transitions>
+              </ContentPresenter>
+              <Path Name="PART_CheckMark"
+                    Grid.Column="1"
+                    Width="13"
+                    Height="13"
+                    Data="{StaticResource MarkdownToolbarMenuCheckIcon}"
+                    Fill="{TemplateBinding Foreground}"
+                    Stretch="Uniform"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    IsVisible="False"/>
+            </Grid>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover, ^:selected">
+        <Setter Property="Background" Value="{StaticResource BgHoverBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource IconHoverBrush}"/>
+      </Style>
+      <Style Selector="^:pointerover /template/ ContentPresenter#PART_HeaderPresenter">
+        <Setter Property="RenderTransform" Value="translate(2px, 0px)"/>
+      </Style>
+      <Style Selector="^:pressed">
+        <Setter Property="Background" Value="{StaticResource SurfaceActiveBrush}"/>
+      </Style>
+      <Style Selector="^:checked:toggle /template/ Path#PART_CheckMark">
+        <Setter Property="IsVisible" Value="True"/>
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Opacity" Value="0.42"/>
+      </Style>
+    </ControlTheme>
+    <ControlTheme x:Key="MarkdownToolbarMenuSeparatorTheme" TargetType="Separator">
+      <Setter Property="Height" Value="1"/>
+      <Setter Property="Margin" Value="8,5"/>
+      <Setter Property="Background" Value="{StaticResource BorderSubtleBrush}"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Height="{TemplateBinding Height}"
+                  Background="{TemplateBinding Background}"/>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
   </Application.Resources>
 
   <Application.Styles>
     <FluentTheme />
     <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml"/>
     <StyleInclude Source="avares://Memo/Components/AnimatedCheckBox.axaml"/>
+
+    <!-- Keep Fluent's internal state layer bound to the app-themed button properties. -->
+    <Style Selector="Button /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}"/>
+      <Setter Property="BorderBrush" Value="{Binding BorderBrush, RelativeSource={RelativeSource TemplatedParent}}"/>
+      <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource TemplatedParent}}"/>
+    </Style>
+    <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}"/>
+      <Setter Property="BorderBrush" Value="{Binding BorderBrush, RelativeSource={RelativeSource TemplatedParent}}"/>
+      <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource TemplatedParent}}"/>
+    </Style>
+    <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}"/>
+      <Setter Property="BorderBrush" Value="{Binding BorderBrush, RelativeSource={RelativeSource TemplatedParent}}"/>
+      <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource TemplatedParent}}"/>
+    </Style>
 
     <Style Selector="PopupRoot">
       <Setter Property="Background" Value="Transparent"/>
@@ -261,7 +391,7 @@
     <Style Selector="Button.TitleBarBtn">
       <Setter Property="Width" Value="34"/>
       <Setter Property="Height" Value="34"/>
-      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Background" Value="{StaticResource TransparentBrush}"/>
       <Setter Property="CornerRadius" Value="8"/>
       <Setter Property="Padding" Value="0"/>
       <Setter Property="Cursor" Value="Hand"/>

@@ -100,6 +100,8 @@ public partial class SettingsWindow : Window
         {
             this.FindControl<SegmentedSelector>("_closeActionSelector")!.SelectedKey =
                 _settings.CloseButtonAction.ToString();
+            this.FindControl<SegmentedSelector>("_themeSelector")!.SelectedKey =
+                _settings.ThemeMode.ToString();
             this.FindControl<SegmentedSelector>("_motionSelector")!.SelectedKey =
                 _settings.MotionMode.ToString();
         }
@@ -215,6 +217,15 @@ public partial class SettingsWindow : Window
 
     private void InitializeSegmentedSelectors()
     {
+        var themeSelector = this.FindControl<SegmentedSelector>("_themeSelector")!;
+        themeSelector.Options = new[]
+        {
+            new SegmentedSelectorOption(nameof(ThemeMode.FollowSystem), "跟随系统"),
+            new SegmentedSelectorOption(nameof(ThemeMode.Light), "亮色"),
+            new SegmentedSelectorOption(nameof(ThemeMode.Dark), "暗色"),
+        };
+        themeSelector.SelectionChanged += OnThemeSelectionChanged;
+
         var closeActionSelector = this.FindControl<SegmentedSelector>("_closeActionSelector")!;
         closeActionSelector.Options = new[]
         {
@@ -241,6 +252,17 @@ public partial class SettingsWindow : Window
 
         _settings.CloseButtonAction = action;
         _settings.HasAskedCloseButtonAction = true;
+        AutoSave();
+    }
+
+    private void OnThemeSelectionChanged(object? sender, SegmentedSelectionChangedEventArgs e)
+    {
+        if (_isApplyingSelectorState
+            || !Enum.TryParse<ThemeMode>(e.NewKey, out var mode)
+            || _settings.ThemeMode == mode) return;
+
+        _settings.ThemeMode = mode;
+        ThemePreferences.ApplyMode(mode);
         AutoSave();
     }
 
@@ -635,7 +657,7 @@ public partial class SettingsWindow : Window
 
     private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        if (TitleBarDragHelper.CanStartDrag(this, e))
         {
             BeginMoveDrag(e);
         }
@@ -751,9 +773,11 @@ public partial class SettingsWindow : Window
         _settings.DuplicateMemoEnabled = defaults.DuplicateMemoEnabled;
         _settings.TraySingleClickToShow = defaults.TraySingleClickToShow;
         _settings.QuickMemoShowPopoutAfterAdd = defaults.QuickMemoShowPopoutAfterAdd;
+        _settings.ThemeMode = defaults.ThemeMode;
         _settings.MotionMode = defaults.MotionMode;
         _settings.MainWindowDockEnabled = defaults.MainWindowDockEnabled;
         _settings.MainWindowDockSize = defaults.MainWindowDockSize;
+        ThemePreferences.ApplyMode(_settings.ThemeMode);
         MotionPreferences.ApplyMode(_settings.MotionMode);
         ApplySettingsToUi();
         AutoSave();

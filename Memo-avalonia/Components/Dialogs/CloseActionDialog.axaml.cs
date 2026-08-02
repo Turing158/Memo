@@ -1,7 +1,9 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Memo.Models;
 using Memo.UI;
+using Memo.Utils;
 using System;
 
 namespace Memo.Components.Dialogs;
@@ -24,6 +26,10 @@ public partial class CloseActionDialog : Window{
         };
         selector.SelectedKey = _selectedAction.ToString();
         selector.SelectionChanged += OnSelectionChanged;
+    }
+
+    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e) {
+        if (TitleBarDragHelper.CanStartDrag(this, e)) BeginMoveDrag(e);
     }
 
     private void OnSelectionChanged(object? sender, SegmentedSelectionChangedEventArgs e) {

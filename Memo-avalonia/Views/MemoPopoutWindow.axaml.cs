@@ -65,7 +65,7 @@ public partial class MemoPopoutWindow : Window {
     }
 
     private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e) {
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        if (TitleBarDragHelper.CanStartDrag(this, e))
             BeginMoveDrag(e);
     }
 

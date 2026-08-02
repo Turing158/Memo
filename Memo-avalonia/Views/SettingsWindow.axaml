@@ -18,7 +18,7 @@
       <Setter Property="Height" Value="34"/>
       <Setter Property="Padding" Value="0"/>
       <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Background" Value="{StaticResource TransparentBrush}"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="HorizontalContentAlignment" Value="Center"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
@@ -93,7 +93,7 @@
       <Setter Property="Padding" Value="16,0"/>
       <Setter Property="CornerRadius" Value="9"/>
       <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}"/>
-      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="Foreground" Value="{StaticResource TextOnAccentBrush}"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="HorizontalContentAlignment" Value="Center"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
@@ -169,7 +169,7 @@
       <Setter Property="BorderBrush" Value="{StaticResource DangerPrimaryBrush}"/>
     </Style>
     <Style Selector="Button.ResetBtn:pointerover">
-      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="Foreground" Value="{StaticResource TextOnAccentBrush}"/>
     </Style>
     <Style Selector="Button.ResetBtn:pressed /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{StaticResource DangerHoverBrush}"/>
@@ -256,9 +256,10 @@
               Background="{StaticResource SurfacePrimaryBrush}"
               BorderBrush="{StaticResource BorderSubtleBrush}"
               BorderThickness="0,0,0,1"
-              CornerRadius="14,14,0,0">
+              CornerRadius="14,14,0,0"
+              PointerPressed="OnTitleBarPointerPressed">
         <Grid ColumnDefinitions="*,Auto" Margin="16,0,10,0">
-          <Border Background="Transparent" PointerPressed="OnTitleBarPointerPressed">
+          <Border Background="Transparent">
             <TextBlock Text="设置" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
           </Border>
           <Button Grid.Column="1" Classes="SettingsIconBtn" Click="OnCloseClick">
@@ -353,6 +354,14 @@
               </StackPanel>
             </Border>
           </comp:CollapsibleSection>
+
+          <Border Classes="SettingsCard">
+            <StackPanel Spacing="10">
+              <TextBlock Text="主题颜色" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+              <comp:SegmentedSelector x:Name="_themeSelector"
+                                      AutomationProperties.Name="主题颜色"/>
+            </StackPanel>
+          </Border>
 
           <Border Classes="SettingsCard">
             <StackPanel Spacing="10">

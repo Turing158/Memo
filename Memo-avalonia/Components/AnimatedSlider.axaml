@@ -127,7 +127,7 @@
         <TextBlock x:Name="_tooltipText"
                    FontSize="11.5"
                    FontWeight="SemiBold"
-                   Foreground="White"
+                   Foreground="{StaticResource TextOnAccentBrush}"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center"
                    TextAlignment="Center"/>

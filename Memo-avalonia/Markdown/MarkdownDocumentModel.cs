@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 
 namespace Memo.Markdown;
 
-internal enum MarkdownVisualKind { Normal, Heading1, Heading2, Heading3, Bold, Italic, Strike, Underline, Mark, Code, Link, Quote, Image, Rule, Table, Task }
+internal enum MarkdownVisualKind { Normal, Heading1, Heading2, Heading3, Heading4, Bold, Italic, Strike, Underline, Mark, Code, Link, Quote, Image, Rule, Table, Task, OrderedListMarker }
 
 internal readonly record struct MarkdownVisualSpan(
     int Start,
@@ -44,6 +44,11 @@ internal sealed partial class MarkdownDocumentModel {
     public void SetMarkdown(string? markdown) {
         Markdown = Normalize(markdown);
         RebuildProjection();
+    }
+
+    public void SetEditableMarkdown(string? markdown) {
+        Markdown = Normalize(markdown);
+        RebuildProjection(ensureTableTrailingLineBreaks: true);
     }
 
     public int SourceOffsetFromVisible(int visibleOffset, bool trailingAffinity = true) {
@@ -95,8 +100,7 @@ internal sealed partial class MarkdownDocumentModel {
 
         var inserted = next[prefix..newSuffix];
         if (oldSuffix == prefix) {
-            var sourceStart = SourceOffsetFromVisible(
-                prefix, trailingAffinity: prefix == 0 || prefix >= VisibleText.Length);
+            var sourceStart = SourceOffsetForInsertion(prefix);
             Markdown = Markdown.Insert(sourceStart, inserted);
         }
         else {
@@ -122,9 +126,34 @@ internal sealed partial class MarkdownDocumentModel {
             if (insertionPoint == Markdown.Length) output.Append(inserted);
             Markdown = output.ToString();
         }
-        RebuildProjection();
+        RebuildProjection(ensureTableTrailingLineBreaks: true);
         var caret = Math.Clamp(prefix + inserted.Length, 0, VisibleText.Length);
         return (caret, caret);
+    }
+
+    internal int SourceOffsetForInsertion(int visibleOffset) {
+        if (visibleOffset == 0 || visibleOffset >= VisibleText.Length)
+            return SourceOffsetFromVisible(visibleOffset, trailingAffinity: true);
+
+        var before = SourceOffsetFromVisible(visibleOffset, trailingAffinity: false);
+        var after = SourceOffsetFromVisible(visibleOffset, trailingAffinity: true);
+        // The projection hides one of the two Markdown line breaks that terminate a quote.
+        // At the first visible position below the quote, cross only that separator. Using the
+        // full trailing affinity could also cross the next paragraph's hidden formatting or
+        // object syntax, while inserting before the separator creates a lazy quote continuation.
+        foreach (var quote in Spans.Where(span =>
+                     span.Kind == MarkdownVisualKind.Quote && span.End + 1 == visibleOffset)) {
+            var quoteSourceEnd = Math.Clamp(
+                quote.SourceStart + quote.SourceLength, quote.SourceStart, Markdown.Length);
+            var separatorEnd = quoteSourceEnd + 2;
+            if (separatorEnd <= Markdown.Length &&
+                Markdown[quoteSourceEnd] == '\n' && Markdown[quoteSourceEnd + 1] == '\n' &&
+                _sourceToVisible[separatorEnd] == visibleOffset)
+                return separatorEnd;
+        }
+        if (after > before && QuotePrefixesOnly().IsMatch(Markdown[before..after]))
+            return after;
+        return before;
     }
 
     private bool IsExactChangeValid(string next, VisibleTextChange? change) {
@@ -174,8 +203,20 @@ internal sealed partial class MarkdownDocumentModel {
         Spans.FirstOrDefault(span => span.Kind == kind && visibleOffset >= span.Start && visibleOffset < span.End) is var found &&
         found.Length > 0 ? found : null;
 
-    private void RebuildProjection() {
+    private void RebuildProjection(bool ensureTableTrailingLineBreaks = false) {
         Ast = Markdig.Markdown.Parse(Markdown, Pipeline);
+        if (ensureTableTrailingLineBreaks) {
+            // Reparse after each normalization so later block spans use the updated source offsets.
+            if (EnsureExplicitQuotePrefixes())
+                Ast = Markdig.Markdown.Parse(Markdown, Pipeline);
+            if (EnsureTableTrailingLineBreaks())
+                Ast = Markdig.Markdown.Parse(Markdown, Pipeline);
+            if (EnsureRuleTrailingLineBreaks())
+                Ast = Markdig.Markdown.Parse(Markdown, Pipeline);
+            if (EnsureQuoteTrailingLineBreaks())
+                Ast = Markdig.Markdown.Parse(Markdown, Pipeline);
+        }
+
         var hidden = new bool[Markdown.Length];
         var replacements = new Dictionary<int, Replacement>();
         var sourceStyles = new List<SourceStyle>();
@@ -214,8 +255,9 @@ internal sealed partial class MarkdownDocumentModel {
         foreach (var style in sourceStyles) {
             var start = sourceToVisible[Math.Clamp(style.Start, 0, Markdown.Length)];
             var end = sourceToVisible[Math.Clamp(style.End, 0, Markdown.Length)];
-            if (end > start) generatedSpans.Add(new MarkdownVisualSpan(start, end - start, style.Kind,
-                style.Start, style.End - style.Start, style.LinkTarget));
+            if (end > start || style.Kind == MarkdownVisualKind.Quote)
+                generatedSpans.Add(new MarkdownVisualSpan(start, end - start, style.Kind,
+                    style.Start, style.End - style.Start, style.LinkTarget));
         }
 
         VisibleText = visible.ToString();
@@ -226,6 +268,106 @@ internal sealed partial class MarkdownDocumentModel {
         ProjectionVersion++;
     }
 
+    private bool EnsureExplicitQuotePrefixes() {
+        var replacements = new List<(int Start, int End, string Prefix)>();
+        foreach (var block in Ast.OfType<QuoteBlock>()) {
+            var blockStart = Math.Clamp(block.Span.Start, 0, Markdown.Length);
+            var blockEnd = Math.Clamp(block.Span.End + 1, blockStart, Markdown.Length);
+            var firstLineStart = blockStart == 0 ? 0 : Markdown.LastIndexOf('\n', blockStart - 1) + 1;
+            var firstLineEnd = Markdown.IndexOf('\n', firstLineStart);
+            if (firstLineEnd < 0 || firstLineEnd > blockEnd) firstLineEnd = blockEnd;
+            var markerOffset = Markdown.IndexOf('>', firstLineStart, firstLineEnd - firstLineStart);
+            if (markerOffset < 0) continue;
+            var indentation = Markdown[firstLineStart..markerOffset];
+            var prefix = indentation + "> ";
+
+            var lineStart = firstLineEnd < blockEnd ? firstLineEnd + 1 : blockEnd;
+            while (lineStart < blockEnd) {
+                var lineEnd = Markdown.IndexOf('\n', lineStart);
+                if (lineEnd < 0 || lineEnd > blockEnd) lineEnd = blockEnd;
+                if (!QuoteItemLine().IsMatch(Markdown[lineStart..lineEnd])) {
+                    var replacementEnd = lineStart;
+                    while (replacementEnd < lineEnd &&
+                           replacementEnd - lineStart < indentation.Length &&
+                           Markdown[replacementEnd] is ' ' or '\t')
+                        replacementEnd++;
+                    replacements.Add((lineStart, replacementEnd, prefix));
+                }
+
+                lineStart = lineEnd + 1;
+            }
+        }
+        if (replacements.Count == 0) return false;
+
+        var output = new StringBuilder(Markdown);
+        foreach (var replacement in replacements.Distinct().OrderByDescending(candidate => candidate.Start)) {
+            output.Remove(replacement.Start, replacement.End - replacement.Start);
+            output.Insert(replacement.Start, replacement.Prefix);
+        }
+        Markdown = output.ToString();
+        return true;
+    }
+
+    private bool EnsureTableTrailingLineBreaks() {
+        var insertions = new List<(int Offset, int Count)>();
+        foreach (var block in Ast) {
+            if (!block.GetType().Name.Contains("Table", StringComparison.Ordinal)) continue;
+            var end = Math.Clamp(block.Span.End + 1, 0, Markdown.Length);
+            var existingLineBreaks = 0;
+            while (end + existingLineBreaks < Markdown.Length && existingLineBreaks < 3 &&
+                   Markdown[end + existingLineBreaks] == '\n')
+                existingLineBreaks++;
+            if (existingLineBreaks < 3) insertions.Add((end, 3 - existingLineBreaks));
+        }
+        if (insertions.Count == 0) return false;
+
+        var output = new StringBuilder(Markdown);
+        foreach (var insertion in insertions.OrderByDescending(candidate => candidate.Offset))
+            output.Insert(insertion.Offset, new string('\n', insertion.Count));
+        Markdown = output.ToString();
+        return true;
+    }
+
+    private bool EnsureRuleTrailingLineBreaks() {
+        var insertions = new List<(int Offset, int Count)>();
+        foreach (var block in Ast.OfType<ThematicBreakBlock>()) {
+            var end = Math.Clamp(block.Span.End + 1, 0, Markdown.Length);
+            if (end >= Markdown.Length || Markdown[end] != '\n')
+                insertions.Add((end, 1));
+        }
+        if (insertions.Count == 0) return false;
+
+        var output = new StringBuilder(Markdown);
+        foreach (var insertion in insertions.OrderByDescending(candidate => candidate.Offset))
+            output.Insert(insertion.Offset, new string('\n', insertion.Count));
+        Markdown = output.ToString();
+        return true;
+    }
+
+    private bool EnsureQuoteTrailingLineBreaks() {
+        var insertions = new List<(int Offset, int Count)>();
+        foreach (var block in Ast.OfType<QuoteBlock>()) {
+            var end = Math.Clamp(block.Span.End + 1, 0, Markdown.Length);
+            var quoteLineStart = Markdown.LastIndexOf('\n', Math.Max(0, end - 2)) + 1;
+            var quoteLine = Markdown[quoteLineStart..Math.Clamp(block.Span.End + 1, quoteLineStart, Markdown.Length)];
+            var hasEmptyTrailingQuoteLine = Regex.IsMatch(quoteLine, @"^\s*>\s*$");
+            var requiredLineBreaks = hasEmptyTrailingQuoteLine ? 1 : 2;
+            var existingLineBreaks = 0;
+            while (end + existingLineBreaks < Markdown.Length && existingLineBreaks < requiredLineBreaks &&
+                   Markdown[end + existingLineBreaks] == '\n')
+                existingLineBreaks++;
+            if (existingLineBreaks < requiredLineBreaks)
+                insertions.Add((end, requiredLineBreaks - existingLineBreaks));
+        }
+        if (insertions.Count == 0) return false;
+
+        var output = new StringBuilder(Markdown);
+        foreach (var insertion in insertions.OrderByDescending(candidate => candidate.Offset))
+            output.Insert(insertion.Offset, new string('\n', insertion.Count));
+        Markdown = output.ToString();
+        return true;
+    }
+
     private void AnalyzeBlocks(bool[] hidden, Dictionary<int, Replacement> replacements, List<SourceStyle> styles) {
         foreach (var block in Ast) {
             var start = Math.Clamp(block.Span.Start, 0, Markdown.Length);
@@ -234,11 +376,21 @@ internal sealed partial class MarkdownDocumentModel {
                 case HeadingBlock heading:
                     var prefixEnd = FindContentStart(start, end);
                     Hide(hidden, start, prefixEnd);
-                    styles.Add(new SourceStyle(prefixEnd, end, heading.Level switch { 1 => MarkdownVisualKind.Heading1, 2 => MarkdownVisualKind.Heading2, _ => MarkdownVisualKind.Heading3 }));
+                    styles.Add(new SourceStyle(prefixEnd, end, heading.Level switch {
+                        1 => MarkdownVisualKind.Heading1,
+                        2 => MarkdownVisualKind.Heading2,
+                        3 => MarkdownVisualKind.Heading3,
+                        _ => MarkdownVisualKind.Heading4,
+                    }));
                     break;
                 case QuoteBlock:
                     styles.Add(new SourceStyle(start, end, MarkdownVisualKind.Quote));
                     HideLinePrefixes(hidden, start, end, QuotePrefix());
+                    // Keep Markdown's blank separator after the quote without adding a second
+                    // editable empty line to the WYSIWYG projection.
+                    if (end + 1 < Markdown.Length &&
+                        Markdown[end] == '\n' && Markdown[end + 1] == '\n')
+                        hidden[end + 1] = true;
                     break;
                 case ListBlock:
                     RewriteListPrefixes(hidden, replacements, start, end);
@@ -252,10 +404,20 @@ internal sealed partial class MarkdownDocumentModel {
                     break;
                 case ThematicBreakBlock:
                     replacements[start] = new Replacement(end, "────────────────", MarkdownVisualKind.Rule);
+                    // A table already hides its own structural separator. In that case the last
+                    // newline is still needed to place the rule on the following visual line.
+                    if (start >= 2 && Markdown[start - 1] == '\n' && Markdown[start - 2] == '\n' &&
+                        !hidden[start - 2])
+                        hidden[start - 1] = true;
                     break;
                 default:
                     if (block.GetType().Name.Contains("Table", StringComparison.Ordinal)) {
                         replacements[start] = new Replacement(end, "￼", MarkdownVisualKind.Table);
+                        // The first two line breaks stay in Markdown source, but never become
+                        // editable caret positions in the projected editor.
+                        if (end + 1 < Markdown.Length &&
+                            Markdown[end] == '\n' && Markdown[end + 1] == '\n')
+                            Hide(hidden, end, end + 2);
                     }
                     break;
             }
@@ -414,7 +576,10 @@ internal sealed partial class MarkdownDocumentModel {
             Hide(hidden, absolute, prefixEnd);
             var replacement = task ? (match.Groups[3].Value.Contains('x', StringComparison.OrdinalIgnoreCase) ? "☑ " : "☐ ") :
                 char.IsDigit(marker[0]) ? marker + " " : "• ";
-            replacements[absolute] = new Replacement(prefixEnd, replacement, task ? MarkdownVisualKind.Task : MarkdownVisualKind.Normal);
+            var kind = task
+                ? MarkdownVisualKind.Task
+                : char.IsDigit(marker[0]) ? MarkdownVisualKind.OrderedListMarker : MarkdownVisualKind.Normal;
+            replacements[absolute] = new Replacement(prefixEnd, replacement, kind);
         }
     }
 
@@ -488,6 +653,8 @@ internal sealed partial class MarkdownDocumentModel {
     [GeneratedRegex(@"(?<!_)_(?!_)(?=\S)(.+?)(?<=\S)_(?!_)", RegexOptions.Singleline)] private static partial Regex ItalicUnderscoreSyntax();
     [GeneratedRegex(@"(?m)^([ \t]*)([-+*]|\d+[.)])[ \t]+(\[[ xX]\][ \t]+)?")] private static partial Regex ListLinePrefix();
     [GeneratedRegex(@"(?m)^\s*>\s?")] private static partial Regex QuotePrefix();
+    [GeneratedRegex(@"^[ \t]*>")] private static partial Regex QuoteItemLine();
+    [GeneratedRegex(@"^[ \t]*(?:>[ \t]?)+$")] private static partial Regex QuotePrefixesOnly();
     [GeneratedRegex(@"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$")] private static partial Regex TableDelimiter();
     [GeneratedRegex(@"<(/)?([A-Za-z][A-Za-z0-9]*)([^<>]*)>")] private static partial Regex HtmlTagSyntax();
     [GeneratedRegex(@"<(script|style|iframe|object|embed|svg|math)\b[^<>]*>(?:.*?</\1\s*>|.*\z)", RegexOptions.IgnoreCase | RegexOptions.Singleline)] private static partial Regex DangerousHtmlContainerSyntax();

@@ -20,7 +20,7 @@
     </Border.RenderTransform>
     <Grid RowDefinitions="*,Auto">
       <StackPanel Spacing="12">
-        <StackPanel Spacing="8">
+        <StackPanel Spacing="8" PointerPressed="OnTitleBarPointerPressed">
           <TextBlock Text="关闭按钮操作" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
           <TextBlock Text="点击右上角关闭按钮时，要最小化到托盘还是直接关闭应用？" FontSize="12.5" LineHeight="18" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"/>
         </StackPanel>
@@ -29,7 +29,7 @@
       </StackPanel>
       <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
         <Button Content="取消" Height="32" Padding="14,0" CornerRadius="8" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnCancelClick"/>
-        <Button Content="确认" Height="32" Padding="14,0" CornerRadius="8" Background="{StaticResource AccentPrimaryBrush}" Foreground="White" BorderThickness="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnConfirmClick"/>
+        <Button Content="确认" Height="32" Padding="14,0" CornerRadius="8" Background="{StaticResource AccentPrimaryBrush}" Foreground="{StaticResource TextOnAccentBrush}" BorderThickness="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnConfirmClick"/>
       </StackPanel>
     </Grid>
   </Border>

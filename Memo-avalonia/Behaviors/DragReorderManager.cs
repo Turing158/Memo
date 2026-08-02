@@ -78,6 +78,7 @@ public sealed class DragReorderManager : IDisposable {
     private readonly List<SlideState> _slides = new();
     private readonly HashSet<Control> _slideTargets = new();
     private readonly List<Control> _dragContainers = new();
+    private readonly Dictionary<Control, double> _containerLayoutYs = new();
 
     // ── 计时器 ──
     private readonly DispatcherTimer _longPressTimer;
@@ -249,6 +250,7 @@ public sealed class DragReorderManager : IDisposable {
 
         _dragContainers.Clear();
         _dragContainers.AddRange(GetContainersInOrder());
+        CacheContainerLayoutPositions();
 
         // 测量卡片真实内容高度和底部间距
         ComputeCardDimensions();
@@ -336,6 +338,7 @@ public sealed class DragReorderManager : IDisposable {
         _placeholder = null;
         _pressedPointer = null;
         _dragContainers.Clear();
+        _containerLayoutYs.Clear();
         _lastFrameTimestamp = null;
     }
 
@@ -741,32 +744,53 @@ public sealed class DragReorderManager : IDisposable {
         if (!svOrigin.HasValue) return;
         var pointerInSv = pointerInItems - svOrigin.Value;
 
-        var viewportHeight = _scroller.Bounds.Height;
-        double distance;
-
-        if (pointerInSv.Y < EdgeThreshold)
-            distance = EdgeThreshold - pointerInSv.Y;
-        else if (pointerInSv.Y > viewportHeight - EdgeThreshold)
-            distance = pointerInSv.Y - (viewportHeight - EdgeThreshold);
-        else
-            distance = 0;
-
-        if (distance > 0) {
+        var maxOffsetY = Math.Max(0, _scroller.Extent.Height - _scroller.Viewport.Height);
+        if (TryGetEdgeScroll(
+                pointerInSv.Y,
+                _scroller.Bounds.Height,
+                _scroller.Offset.Y,
+                maxOffsetY,
+                out var direction,
+                out var strength)) {
             _scrollContext ??= new ScrollContext {
                 PointerInItems = pointerInItems,
-                PointerInViewport = pointerInSv,
-                Direction = pointerInSv.Y < EdgeThreshold ? -1 : 1,
-                Strength = distance / EdgeThreshold,
+                Direction = direction,
+                Strength = strength,
             };
             _scrollContext.PointerInItems = pointerInItems;
-            _scrollContext.PointerInViewport = pointerInSv;
-            _scrollContext.Direction = pointerInSv.Y < EdgeThreshold ? -1 : 1;
-            _scrollContext.Strength = Math.Clamp(distance / EdgeThreshold, 0, 1);
+            _scrollContext.Direction = direction;
+            _scrollContext.Strength = strength;
             StartVisualFrameLoop();
         }
         else {
             _scrollContext = null;
         }
+    }
+
+    private static bool TryGetEdgeScroll(
+        double pointerY,
+        double viewportHeight,
+        double offsetY,
+        double maxOffsetY,
+        out int direction,
+        out double strength) {
+        double distance;
+        if (pointerY < EdgeThreshold) {
+            direction = -1;
+            distance = EdgeThreshold - pointerY;
+        }
+        else if (pointerY > viewportHeight - EdgeThreshold) {
+            direction = 1;
+            distance = pointerY - (viewportHeight - EdgeThreshold);
+        }
+        else {
+            direction = 0;
+            strength = 0;
+            return false;
+        }
+
+        strength = Math.Clamp(distance / EdgeThreshold, 0, 1);
+        return direction < 0 ? offsetY > 0 : offsetY < maxOffsetY;
     }
 
     private void AdvanceEdgeScroll(double elapsedSeconds) {
@@ -775,13 +799,18 @@ public sealed class DragReorderManager : IDisposable {
         var delta = ctx.Direction * ctx.Strength * MaxScrollSpeedPerSecond * elapsedSeconds;
         var offset = _scroller.Offset;
         var maxOffsetY = Math.Max(0, _scroller.Extent.Height - _scroller.Viewport.Height);
+        var canScroll = ctx.Direction < 0 ? offset.Y > 0 : offset.Y < maxOffsetY;
+        if (!canScroll) {
+            _scrollContext = null;
+            return;
+        }
+
         var newY = Math.Clamp(offset.Y + delta, 0, maxOffsetY);
         _scroller.Offset = new Vector(offset.X, newY);
 
-        // 重算 PointerInItems：内容已滚动，视口坐标不变，但 _items 空间坐标已变
-        var svOrigin = _scroller.TranslatePoint(new Point(0, 0), _items);
-        if (svOrigin.HasValue)
-            ctx.PointerInItems = ctx.PointerInViewport + svOrigin.Value;
+        // 内容坐标随实际滚动量等量移动，避免写入 Offset 后强制查询视觉树坐标。
+        var actualDeltaY = newY - offset.Y;
+        ctx.PointerInItems = new Point(ctx.PointerInItems.X, ctx.PointerInItems.Y + actualDeltaY);
 
         var newIndex = ComputeInsertIndex(ctx.PointerInItems);
         if (newIndex != _insertIndex) {
@@ -789,6 +818,9 @@ public sealed class DragReorderManager : IDisposable {
             UpdatePlaceholderPosition();
             BeginNeighborSlides();
         }
+
+        if (ctx.Direction < 0 ? newY <= 0 : newY >= maxOffsetY)
+            _scrollContext = null;
     }
 
     private void StartVisualFrameLoop() {
@@ -827,7 +859,6 @@ public sealed class DragReorderManager : IDisposable {
 
     private sealed class ScrollContext {
         public required Point PointerInItems;
-        public required Point PointerInViewport;
         public required int Direction;
         public required double Strength;
     }
@@ -911,6 +942,9 @@ public sealed class DragReorderManager : IDisposable {
         _dragContainers.Count > 0 ? _dragContainers : GetContainersInOrder();
 
     private double GetContainerY(Control c) {
+        if (_containerLayoutYs.TryGetValue(c, out var layoutY))
+            return layoutY + ((c.RenderTransform as TranslateTransform)?.Y ?? 0);
+
         var pt = c.TranslatePoint(new Point(0, 0), _items);
         return pt.HasValue ? pt.Value.Y : c.Bounds.Y;
     }
@@ -919,9 +953,23 @@ public sealed class DragReorderManager : IDisposable {
     /// 容器的布局 Y（排除让位动画产生的 RenderTransform 偏移）。
     /// </summary>
     private double GetContainerLayoutY(Control c) {
+        if (_containerLayoutYs.TryGetValue(c, out var layoutY))
+            return layoutY;
+
         var visualY = GetContainerY(c);
         var slideOff = (c.RenderTransform as TranslateTransform)?.Y ?? 0;
         return visualY - slideOff;
+    }
+
+    private void CacheContainerLayoutPositions() {
+        _containerLayoutYs.Clear();
+        foreach (var container in _dragContainers) {
+            var point = container.TranslatePoint(new Point(0, 0), _items);
+            if (!point.HasValue) continue;
+
+            var slideOffset = (container.RenderTransform as TranslateTransform)?.Y ?? 0;
+            _containerLayoutYs[container] = point.Value.Y - slideOffset;
+        }
     }
 
     /// <summary>

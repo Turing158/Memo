@@ -14,7 +14,7 @@
     <Style Selector="Button.TrayMenuItem">
       <Setter Property="Height" Value="34"/>
       <Setter Property="Padding" Value="7,0"/>
-      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Background" Value="{StaticResource TransparentBrush}"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="CornerRadius" Value="8"/>
       <Setter Property="Cursor" Value="Hand"/>

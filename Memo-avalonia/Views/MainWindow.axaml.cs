@@ -296,7 +296,7 @@ public partial class MainWindow : Window {
 
     // —— 标题栏拖拽移动窗口 ——
     private void _titleBarDrag_PointerPressed(object? sender, PointerPressedEventArgs e) {
-        if (sender is Border titleBar)
+        if (sender is Border titleBar && TitleBarDragHelper.CanStartDrag(this, e))
             BeginTitleBarDrag(titleBar, e);
     }
 

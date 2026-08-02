@@ -3,25 +3,199 @@
              xmlns:ae="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
              x:Class="Memo.Components.MarkdownEditor">
   <UserControl.Resources>
+    <ControlTheme x:Key="MarkdownTaskCheckBoxTheme" TargetType="CheckBox">
+      <Setter Property="Width" Value="16"/>
+      <Setter Property="Height" Value="16"/>
+      <Setter Property="MinWidth" Value="16"/>
+      <Setter Property="MinHeight" Value="16"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="HorizontalAlignment" Value="Left"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Background" Value="{StaticResource BgSecondaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusAdorner" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid Width="16" Height="16">
+            <Border x:Name="PART_FocusCue"
+                    Width="16"
+                    Height="16"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="Transparent"
+                    BorderBrush="{StaticResource BorderFocusBrush}"
+                    BorderThickness="2"
+                    CornerRadius="5"
+                    IsHitTestVisible="False"
+                    Opacity="0">
+              <Border.Transitions>
+                <Transitions>
+                  <DoubleTransition Property="Opacity"
+                                    Duration="{DynamicResource MotionFastDuration}"
+                                    Easing="CubicEaseOut"/>
+                </Transitions>
+              </Border.Transitions>
+            </Border>
+            <Border x:Name="PART_Indicator"
+                    Width="16"
+                    Height="16"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{TemplateBinding CornerRadius}"
+                    RenderTransform="scale(1)"
+                    RenderTransformOrigin="50%,50%">
+              <Border.Transitions>
+                <Transitions>
+                  <BrushTransition Property="Background"
+                                   Duration="{DynamicResource MotionStandardDuration}"
+                                   Easing="CubicEaseOut"/>
+                  <BrushTransition Property="BorderBrush"
+                                   Duration="{DynamicResource MotionFastDuration}"
+                                   Easing="CubicEaseOut"/>
+                  <TransformOperationsTransition Property="RenderTransform"
+                                                 Duration="{DynamicResource MotionFastDuration}"
+                                                 Easing="CubicEaseOut"/>
+                </Transitions>
+              </Border.Transitions>
+              <Path x:Name="PART_CheckMark"
+                    Width="10"
+                    Height="10"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Data="M1.2,5.3 L3.8,7.9 L8.8,2.4"
+                    Stroke="{StaticResource TextOnAccentBrush}"
+                    StrokeThickness="1.6"
+                    StrokeLineCap="Round"
+                    StrokeJoin="Round"
+                    IsHitTestVisible="False"
+                    Opacity="0"
+                    RenderTransform="scale(0.55)"
+                    RenderTransformOrigin="50%,50%">
+                <Path.Transitions>
+                  <Transitions>
+                    <DoubleTransition Property="Opacity"
+                                      Duration="{DynamicResource MotionStandardDuration}"
+                                      Easing="CubicEaseOut"/>
+                    <TransformOperationsTransition Property="RenderTransform"
+                                                   Duration="{DynamicResource MotionStandardDuration}"
+                                                   Easing="CubicEaseOut"/>
+                  </Transitions>
+                </Path.Transitions>
+              </Path>
+            </Border>
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#PART_Indicator">
+        <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}"/>
+      </Style>
+      <Style Selector="^:checked /template/ Border#PART_Indicator">
+        <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}"/>
+      </Style>
+      <Style Selector="^:checked /template/ Path#PART_CheckMark">
+        <Setter Property="Opacity" Value="1"/>
+        <Setter Property="RenderTransform" Value="scale(1)"/>
+      </Style>
+      <Style Selector="^:checked:pointerover /template/ Border#PART_Indicator">
+        <Setter Property="Background" Value="{StaticResource AccentHoverBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource AccentHoverBrush}"/>
+      </Style>
+      <Style Selector="^:focus-visible /template/ Border#PART_Indicator">
+        <Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/>
+      </Style>
+      <Style Selector="^:focus-visible /template/ Border#PART_FocusCue">
+        <Setter Property="Opacity" Value="1"/>
+      </Style>
+      <Style Selector="^:pointerover /template/ Border#PART_Indicator">
+        <Setter Property="RenderTransform" Value="scale(1.06)"/>
+      </Style>
+      <Style Selector="^:pressed /template/ Border#PART_Indicator">
+        <Setter Property="RenderTransform" Value="scale(0.88)"/>
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Opacity" Value="0.5"/>
+      </Style>
+    </ControlTheme>
     <StreamGeometry x:Key="MdListIcon">M4,10.5C3.17,10.5 2.5,11.17 2.5,12C2.5,12.83 3.17,13.5 4,13.5C4.83,13.5 5.5,12.83 5.5,12C5.5,11.17 4.83,10.5 4,10.5M4,4.5C3.17,4.5 2.5,5.17 2.5,6C2.5,6.83 3.17,7.5 4,7.5C4.83,7.5 5.5,6.83 5.5,6C5.5,5.17 4.83,4.5 4,4.5M4,16.5C3.17,16.5 2.5,17.17 2.5,18C2.5,18.83 3.17,19.5 4,19.5C4.83,19.5 5.5,18.83 5.5,18C5.5,17.17 4.83,16.5 4,16.5M8,19H22V17H8V19M8,13H22V11H8V13M8,5V7H22V5H8Z</StreamGeometry>
     <StreamGeometry x:Key="MdLinkIcon">M10.59,13.41C11,13.8 11,14.4 10.59,14.82L8.82,16.59C7.26,18.15 4.73,18.15 3.17,16.59C1.61,15.03 1.61,12.5 3.17,10.94L6.71,7.4C8.27,5.84 10.8,5.84 12.36,7.4C12.77,7.81 12.77,8.44 12.36,8.83C11.97,9.22 11.34,9.22 10.95,8.83C10.17,8.05 8.9,8.05 8.12,8.83L4.58,12.37C3.8,13.15 3.8,14.42 4.58,15.2C5.36,15.98 6.63,15.98 7.41,15.2L9.18,13.41C9.57,13.02 10.2,13.02 10.59,13.41M20.83,7.41C22.39,8.97 22.39,11.5 20.83,13.06L17.29,16.6C15.73,18.16 13.2,18.16 11.64,16.6C11.23,16.19 11.23,15.56 11.64,15.17C12.03,14.78 12.66,14.78 13.05,15.17C13.83,15.95 15.1,15.95 15.88,15.17L19.42,11.63C20.2,10.85 20.2,9.58 19.42,8.8C18.64,8.02 17.37,8.02 16.59,8.8L14.82,10.59C14.43,10.98 13.8,10.98 13.41,10.59C13,10.2 13,9.6 13.41,9.18L15.18,7.41C16.74,5.85 19.27,5.85 20.83,7.41Z</StreamGeometry>
     <StreamGeometry x:Key="MdImageIcon">M21,19V5C21,3.9 20.1,3 19,3H5C3.9,3 3,3.9 3,5V19C3,20.1 3.9,21 5,21H19C20.1,21 21,20.1 21,19M8.5,13.5L11,16.51L14.5,12L19,18H5L8.5,13.5Z</StreamGeometry>
     <StreamGeometry x:Key="MdMoreIcon">M6,10C4.9,10 4,10.9 4,12C4,13.1 4.9,14 6,14C7.1,14 8,13.1 8,12C8,10.9 7.1,10 6,10M18,10C16.9,10 16,10.9 16,12C16,13.1 16.9,14 18,14C19.1,14 20,13.1 20,12C20,10.9 19.1,10 18,10M12,10C10.9,10 10,10.9 10,12C10,13.1 10.9,14 12,14C13.1,14 14,13.1 14,12C14,10.9 13.1,10 12,10Z</StreamGeometry>
     <StreamGeometry x:Key="MdSaveIcon">F1M5.25,3.5H16.7L20.5,7.3V18.75C20.5,19.72 19.72,20.5 18.75,20.5H5.25C4.28,20.5 3.5,19.72 3.5,18.75V5.25C3.5,4.28 4.28,3.5 5.25,3.5ZM5.25,5.25V18.75H7.25V13.25C7.25,12.56 7.81,12 8.5,12H15.5C16.19,12 16.75,12.56 16.75,13.25V18.75H18.75V8.03L15.97,5.25H15.75V8.75C15.75,9.44 15.19,10 14.5,10H7.5C6.81,10 6.25,9.44 6.25,8.75V5.25ZM8,5.25V8.25H14V5.25ZM9,13.75V18.75H15V13.75Z</StreamGeometry>
     <StreamGeometry x:Key="MdNewIcon">M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z</StreamGeometry>
+    <StreamGeometry x:Key="MdTableIcon">M3,4H21A2,2 0 0 1 23,6V18A2,2 0 0 1 21,20H3A2,2 0 0 1 1,18V6A2,2 0 0 1 3,4M3,6V9H21V6H3M3,11V14H21V11H3M3,16V18H21V16H3M8,4V20H10V4H8M15,4V20H17V4H15Z</StreamGeometry>
+    <StreamGeometry x:Key="MdRemoteImageIcon">M3,5A2,2 0 0 1 5,3H15A2,2 0 0 1 17,5V9.1C15.8,9.5 14.8,10.1 14,11L12.5,9L9,13.5L7,11L3,16V5M15.5,10A5.5,5.5 0 1 1 15.5,21A5.5,5.5 0 0 1 15.5,10M12,15H14C14.1,13.9 14.4,13 15,12.4C13.5,12.6 12.3,13.6 12,15M16,12.4C16.6,13 16.9,13.9 17,15H19C18.7,13.6 17.5,12.6 16,12.4M12,16.5C12.3,17.9 13.5,18.9 15,19.1C14.4,18.5 14.1,17.6 14,16.5H12M15.5,12.5C15,13.1 14.7,13.9 14.6,15H16.4C16.3,13.9 16,13.1 15.5,12.5M14.6,16.5C14.7,17.6 15,18.4 15.5,19C16,18.4 16.3,17.6 16.4,16.5H14.6M17,16.5C16.9,17.6 16.6,18.5 16,19.1C17.5,18.9 18.7,17.9 19,16.5H17Z</StreamGeometry>
   </UserControl.Resources>
   <UserControl.Styles>
     <Style Selector="Border.MarkdownEditorSurface"><Setter Property="Background" Value="{StaticResource SurfacePrimaryBrush}"/><Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="10"/></Style>
-    <Style Selector="Border.MarkdownEditorSurface:focus-within"><Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/></Style>
-    <Style Selector="Border.MarkdownEditorSurface.borderless"><Setter Property="Background" Value="{StaticResource BgPrimaryBrush}"/></Style>
-    <Style Selector="Border.MarkdownEditorSurface.borderless:focus-within"><Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}"/></Style>
-    <Style Selector="Button.MarkdownToolButton"><Setter Property="Width" Value="29"/><Setter Property="Height" Value="29"/><Setter Property="MinWidth" Value="29"/><Setter Property="MinHeight" Value="29"/><Setter Property="Padding" Value="0"/><Setter Property="CornerRadius" Value="6"/><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{StaticResource IconDefaultBrush}"/><Setter Property="Cursor" Value="Hand"/><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/></Style>
-    <Style Selector="Button.MarkdownToolButton:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="{StaticResource BgHoverBrush}"/></Style>
+    <Style Selector="Border.MarkdownEditorSurface.borderless"><Setter Property="Background" Value="Transparent"/></Style>
+    <Style Selector="Border.MarkdownEditorSurface.borderless:focus-within"><Setter Property="Background" Value="Transparent"/></Style>
+    <Style Selector="Border.MarkdownEditorToolbar"><Setter Property="Background" Value="{StaticResource BgSecondaryBrush}"/></Style>
+    <Style Selector="Border.MarkdownEditorToolbar.borderless"><Setter Property="Background" Value="Transparent"/></Style>
+    <Style Selector="Button.MarkdownToolButton">
+      <Setter Property="Width" Value="29"/>
+      <Setter Property="Height" Value="29"/>
+      <Setter Property="MinWidth" Value="29"/>
+      <Setter Property="MinHeight" Value="29"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Background" Value="{StaticResource TransparentBrush}"/>
+      <Setter Property="Foreground" Value="{StaticResource IconDefaultBrush}"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Foreground"
+                           Duration="{DynamicResource MotionFastDuration}"
+                           Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.MarkdownToolButton /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="RenderTransform" Value="scale(1)"/>
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background"
+                           Duration="{DynamicResource MotionFastDuration}"
+                           Easing="CubicEaseOut"/>
+          <BrushTransition Property="BorderBrush"
+                           Duration="{DynamicResource MotionFastDuration}"
+                           Easing="CubicEaseOut"/>
+          <TransformOperationsTransition Property="RenderTransform"
+                                         Duration="{DynamicResource MotionFastDuration}"
+                                         Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.MarkdownToolButton:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource IconHoverBrush}"/>
+    </Style>
+    <Style Selector="Button.MarkdownToolButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource BgHoverBrush}"/>
+      <Setter Property="RenderTransform" Value="scale(1.06)"/>
+    </Style>
+    <Style Selector="Button.MarkdownToolButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="RenderTransform" Value="scale(0.96)"/>
+    </Style>
+    <Style Selector="Button.MarkdownToolButton.menuOpen /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="{StaticResource BgHoverBrush}"/></Style>
     <Style Selector="Button.MarkdownToolButton.formatActive /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="{StaticResource BgHoverBrush}"/></Style>
     <Style Selector="Button.MarkdownToolButton.formatActive"><Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}"/></Style>
     <Style Selector="Button.MarkdownToolButton:focus-visible /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/><Setter Property="BorderThickness" Value="2"/></Style>
     <Style Selector="Button.MarkdownToolButton.saveAction /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="{StaticResource SuccessSubtleBrush}"/></Style>
     <Style Selector="Button.MarkdownToolButton.saveAction"><Setter Property="Foreground" Value="{StaticResource SuccessHoverBrush}"/></Style>
+    <Style Selector="TextBlock.MarkdownMenuGlyph"><Setter Property="Width" Value="22"/><Setter Property="FontFamily" Value="Cascadia Mono, Consolas, Microsoft YaHei UI"/><Setter Property="FontSize" Value="11.5"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="TextAlignment" Value="Center"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/></Style>
+    <Style Selector="MenuItem.MarkdownMenuItem PathIcon"><Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/><Setter Property="Width" Value="16"/><Setter Property="Height" Value="16"/><Setter Property="Margin" Value="3,0"/></Style>
+    <Style Selector="MenuItem.MarkdownMenuItem:pointerover TextBlock.MarkdownMenuGlyph"><Setter Property="Foreground" Value="{StaticResource IconHoverBrush}"/></Style>
+    <Style Selector="MenuItem.MarkdownMenuItem:pointerover PathIcon"><Setter Property="Foreground" Value="{StaticResource IconHoverBrush}"/></Style>
     <Style Selector="TextBox.MarkdownTableCellInput">
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderBrush" Value="Transparent"/>
@@ -51,18 +225,46 @@
   </UserControl.Styles>
   <Border x:Name="_surface" Classes="MarkdownEditorSurface" ClipToBounds="True">
     <Grid RowDefinitions="Auto,*">
-      <Border x:Name="_toolbar" Height="36" Background="{StaticResource BgSecondaryBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,0,0,1" CornerRadius="9,9,0,0" Padding="5,3">
+      <Border x:Name="_toolbar" Classes="MarkdownEditorToolbar" Height="36" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,0,0,1" CornerRadius="9,9,0,0" Padding="5,3">
         <Grid ColumnDefinitions="*,Auto">
           <StackPanel x:Name="_formatToolbar" Orientation="Horizontal" Spacing="1">
             <Button x:Name="_boldButton" Classes="MarkdownToolButton" Tag="Bold" Click="OnFormatClick" ToolTip.Tip="粗体 (Ctrl+B)"><TextBlock Text="B" FontSize="16" FontWeight="Bold"/></Button>
             <Button x:Name="_italicButton" Classes="MarkdownToolButton" Tag="Italic" Click="OnFormatClick" ToolTip.Tip="斜体 (Ctrl+I)"><TextBlock Text="I" FontSize="16" FontStyle="Italic"/></Button>
-            <Button Classes="MarkdownToolButton" Tag="BulletList" Click="OnFormatClick" ToolTip.Tip="无序列表"><PathIcon Data="{StaticResource MdListIcon}" Width="15" Height="15"/></Button>
-            <Button Classes="MarkdownToolButton" Click="OnLinkClick" ToolTip.Tip="插入或编辑链接 (Ctrl+K)"><PathIcon Data="{StaticResource MdLinkIcon}" Width="15" Height="15"/></Button>
-            <Button Classes="MarkdownToolButton" Click="OnLocalImageClick" ToolTip.Tip="插入本地图片"><PathIcon Data="{StaticResource MdImageIcon}" Width="15" Height="15"/></Button>
+            <Button x:Name="_headingButton" Classes="MarkdownToolButton" PointerEntered="OnHeadingPointerEntered" PointerExited="OnHeadingPointerExited" ToolTip.Tip="标题"><TextBlock Text="h" FontSize="16" FontWeight="Bold"/><Button.Flyout><MenuFlyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterTheme="{StaticResource MarkdownToolbarMenuPresenterTheme}" ItemContainerTheme="{StaticResource MarkdownToolbarMenuItemTheme}" Opened="OnHeadingMenuOpened" Closing="OnToolbarMenuClosing" Closed="OnHeadingMenuClosed">
+              <MenuItem Classes="MarkdownMenuItem" AutomationProperties.Name="一级标题" Tag="1" Click="OnHeadingMenuClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Classes="MarkdownMenuGlyph" Text="H1"/><TextBlock Text="一级标题"/></StackPanel></MenuItem.Header></MenuItem>
+              <MenuItem Classes="MarkdownMenuItem" AutomationProperties.Name="二级标题" Tag="2" Click="OnHeadingMenuClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Classes="MarkdownMenuGlyph" Text="H2"/><TextBlock Text="二级标题"/></StackPanel></MenuItem.Header></MenuItem>
+              <MenuItem Classes="MarkdownMenuItem" AutomationProperties.Name="三级标题" Tag="3" Click="OnHeadingMenuClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Classes="MarkdownMenuGlyph" Text="H3"/><TextBlock Text="三级标题"/></StackPanel></MenuItem.Header></MenuItem>
+              <MenuItem Classes="MarkdownMenuItem" AutomationProperties.Name="四级标题" Tag="4" Click="OnHeadingMenuClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Classes="MarkdownMenuGlyph" Text="H4"/><TextBlock Text="四级标题"/></StackPanel></MenuItem.Header></MenuItem>
+            </MenuFlyout></Button.Flyout></Button>
+            <Button x:Name="_strikeButton" Classes="MarkdownToolButton" AutomationProperties.Name="删除线" Tag="Strikethrough" Click="OnFormatClick" ToolTip.Tip="删除线"><TextBlock Text="S" FontSize="14" TextDecorations="Strikethrough"/></Button>
+            <Button x:Name="_bulletListButton" Classes="MarkdownToolButton" AutomationProperties.Name="无序列表" Tag="BulletList" Click="OnFormatClick" ToolTip.Tip="无序列表" IsVisible="False"><PathIcon Data="{StaticResource MdListIcon}" Width="15" Height="15"/></Button>
+            <Button x:Name="_orderedListButton" Classes="MarkdownToolButton" AutomationProperties.Name="有序列表" Tag="OrderedList" Click="OnFormatClick" ToolTip.Tip="有序列表" IsVisible="False"><TextBlock Text="1." FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI" FontSize="11.5" FontWeight="SemiBold"/></Button>
+            <Button x:Name="_taskListButton" Classes="MarkdownToolButton" AutomationProperties.Name="任务列表" Tag="TaskList" Click="OnFormatClick" ToolTip.Tip="任务列表" IsVisible="False"><TextBlock Text="[ ]" FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI" FontSize="10.5" FontWeight="SemiBold"/></Button>
+            <Button x:Name="_quoteButton" Classes="MarkdownToolButton" AutomationProperties.Name="引用" Tag="Quote" Click="OnFormatClick" ToolTip.Tip="引用" IsVisible="False"><TextBlock Text="&gt;" FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI" FontSize="15" FontWeight="SemiBold"/></Button>
+            <Button x:Name="_codeButton" Classes="MarkdownToolButton" AutomationProperties.Name="行内代码" Tag="InlineCode" Click="OnFormatClick" ToolTip.Tip="行内代码" IsVisible="False"><TextBlock Text="&lt;/&gt;" FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI" FontSize="9.5" FontWeight="SemiBold"/></Button>
+            <Button x:Name="_codeBlockButton" Classes="MarkdownToolButton" AutomationProperties.Name="代码块" Tag="CodeBlock" Click="OnFormatClick" ToolTip.Tip="代码块" IsVisible="False"><TextBlock Text="```" FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI" FontSize="11.5" FontWeight="SemiBold"/></Button>
+            <Button x:Name="_tableButton" Classes="MarkdownToolButton" AutomationProperties.Name="表格" Tag="Table" Click="OnFormatClick" ToolTip.Tip="表格" IsVisible="False"><PathIcon Data="{StaticResource MdTableIcon}" Width="16" Height="16"/></Button>
+            <Button x:Name="_horizontalRuleButton" Classes="MarkdownToolButton" AutomationProperties.Name="分隔线" Tag="HorizontalRule" Click="OnFormatClick" ToolTip.Tip="分隔线" IsVisible="False"><TextBlock Text="---" FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI" FontSize="11.5" FontWeight="SemiBold"/></Button>
+            <Button x:Name="_linkButton" Classes="MarkdownToolButton" AutomationProperties.Name="链接" Click="OnLinkClick" ToolTip.Tip="链接" IsVisible="False"><PathIcon Data="{StaticResource MdLinkIcon}" Width="16" Height="16"/></Button>
+            <Button x:Name="_localImageButton" Classes="MarkdownToolButton" AutomationProperties.Name="本地图片" Click="OnLocalImageClick" ToolTip.Tip="本地图片" IsVisible="False"><PathIcon Data="{StaticResource MdImageIcon}" Width="16" Height="16"/></Button>
+            <Button x:Name="_remoteImageButton" Classes="MarkdownToolButton" AutomationProperties.Name="网络图片" Click="OnRemoteImageClick" ToolTip.Tip="网络图片" IsVisible="False"><PathIcon Data="{StaticResource MdRemoteImageIcon}" Width="16" Height="16"/></Button>
           </StackPanel>
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="1">
-            <Button x:Name="_moreButton" Classes="MarkdownToolButton" ToolTip.Tip="更多格式"><PathIcon Data="{StaticResource MdMoreIcon}" Width="16" Height="16"/><Button.Flyout><MenuFlyout Placement="BottomEdgeAlignedRight">
-              <MenuItem Header="标题" Tag="Heading" Click="OnFormatMenuClick"/><MenuItem x:Name="_strikeMenuItem" Header="删除线" Tag="Strikethrough" ToggleType="CheckBox" Click="OnFormatMenuClick"/><MenuItem Header="有序列表" Tag="OrderedList" Click="OnFormatMenuClick"/><MenuItem Header="任务列表" Tag="TaskList" Click="OnFormatMenuClick"/><MenuItem Header="引用" Tag="Quote" Click="OnFormatMenuClick"/><MenuItem x:Name="_codeMenuItem" Header="行内代码" Tag="InlineCode" ToggleType="CheckBox" Click="OnFormatMenuClick"/><MenuItem Header="代码块" Tag="CodeBlock" Click="OnFormatMenuClick"/><MenuItem Header="表格" Tag="Table" Click="OnFormatMenuClick"/><MenuItem Header="分隔线" Tag="HorizontalRule" Click="OnFormatMenuClick"/><Separator/><MenuItem Header="网络图片" Click="OnRemoteImageClick"/><MenuItem Header="编辑 Markdown 源码" Click="OnEditSourceClick"/>
+          <StackPanel x:Name="_toolbarActions" Grid.Column="1" Orientation="Horizontal" Spacing="1">
+            <Button x:Name="_editSourceButton" Classes="MarkdownToolButton" AutomationProperties.Name="编辑源码" Click="OnEditSourceClick" ToolTip.Tip="编辑源码" IsVisible="False"><TextBlock Text="MD" FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI" FontSize="10.5" FontWeight="SemiBold"/></Button>
+            <Button x:Name="_moreButton" Classes="MarkdownToolButton" PointerEntered="OnMorePointerEntered" PointerExited="OnMorePointerExited" ToolTip.Tip="更多格式"><PathIcon Data="{StaticResource MdMoreIcon}" Width="16" Height="16"/><Button.Flyout><MenuFlyout Placement="BottomEdgeAlignedRight" FlyoutPresenterTheme="{StaticResource MarkdownToolbarMenuPresenterTheme}" ItemContainerTheme="{StaticResource MarkdownToolbarMenuItemTheme}" Opened="OnMoreMenuOpened" Closing="OnToolbarMenuClosing" Closed="OnMoreMenuClosed">
+              <MenuItem x:Name="_bulletListMenuItem" Classes="MarkdownMenuItem" AutomationProperties.Name="无序列表" Tag="BulletList" Click="OnFormatMenuClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><PathIcon Data="{StaticResource MdListIcon}"/><TextBlock Text="无序列表"/></StackPanel></MenuItem.Header></MenuItem>
+              <MenuItem x:Name="_orderedListMenuItem" Classes="MarkdownMenuItem" AutomationProperties.Name="有序列表" Tag="OrderedList" Click="OnFormatMenuClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Classes="MarkdownMenuGlyph" Text="1."/><TextBlock Text="有序列表"/></StackPanel></MenuItem.Header></MenuItem>
+              <MenuItem x:Name="_taskListMenuItem" Classes="MarkdownMenuItem" AutomationProperties.Name="任务列表" Tag="TaskList" Click="OnFormatMenuClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Classes="MarkdownMenuGlyph" Text="[ ]"/><TextBlock Text="任务列表"/></StackPanel></MenuItem.Header></MenuItem>
+              <MenuItem x:Name="_quoteMenuItem" Classes="MarkdownMenuItem" AutomationProperties.Name="引用" Tag="Quote" Click="OnFormatMenuClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Classes="MarkdownMenuGlyph" Text="&gt;"/><TextBlock Text="引用"/></StackPanel></MenuItem.Header></MenuItem>
+              <MenuItem Classes="MarkdownMenuItem" AutomationProperties.Name="行内代码" x:Name="_codeMenuItem" Tag="InlineCode" ToggleType="CheckBox" Click="OnFormatMenuClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Classes="MarkdownMenuGlyph" Text="&lt;/&gt;"/><TextBlock Text="行内代码"/></StackPanel></MenuItem.Header></MenuItem>
+              <MenuItem x:Name="_codeBlockMenuItem" Classes="MarkdownMenuItem" AutomationProperties.Name="代码块" Tag="CodeBlock" Click="OnFormatMenuClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Classes="MarkdownMenuGlyph" Text="```"/><TextBlock Text="代码块"/></StackPanel></MenuItem.Header></MenuItem>
+              <MenuItem x:Name="_tableMenuItem" Classes="MarkdownMenuItem" AutomationProperties.Name="表格" Tag="Table" Click="OnFormatMenuClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><PathIcon Data="{StaticResource MdTableIcon}"/><TextBlock Text="表格"/></StackPanel></MenuItem.Header></MenuItem>
+              <MenuItem x:Name="_horizontalRuleMenuItem" Classes="MarkdownMenuItem" AutomationProperties.Name="分隔线" Tag="HorizontalRule" Click="OnFormatMenuClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Classes="MarkdownMenuGlyph" Text="---"/><TextBlock Text="分隔线"/></StackPanel></MenuItem.Header></MenuItem>
+              <MenuItem x:Name="_linkMenuItem" Classes="MarkdownMenuItem" AutomationProperties.Name="链接" Click="OnLinkClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><PathIcon Data="{StaticResource MdLinkIcon}"/><TextBlock Text="链接"/></StackPanel></MenuItem.Header></MenuItem>
+              <MenuItem x:Name="_localImageMenuItem" Classes="MarkdownMenuItem" AutomationProperties.Name="本地图片" Click="OnLocalImageClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><PathIcon Data="{StaticResource MdImageIcon}"/><TextBlock Text="本地图片"/></StackPanel></MenuItem.Header></MenuItem>
+              <MenuItem x:Name="_remoteImageMenuItem" Classes="MarkdownMenuItem" AutomationProperties.Name="网络图片" Click="OnRemoteImageClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><PathIcon Data="{StaticResource MdRemoteImageIcon}"/><TextBlock Text="网络图片"/></StackPanel></MenuItem.Header></MenuItem>
+              <Separator x:Name="_responsiveMenuSeparator" Theme="{StaticResource MarkdownToolbarMenuSeparatorTheme}"/>
+              <MenuItem x:Name="_editSourceMenuItem" Classes="MarkdownMenuItem" AutomationProperties.Name="编辑源码" Click="OnEditSourceClick"><MenuItem.Header><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Classes="MarkdownMenuGlyph" Text="MD"/><TextBlock Text="编辑源码"/></StackPanel></MenuItem.Header></MenuItem>
             </MenuFlyout></Button.Flyout></Button>
             <Button x:Name="_saveButton" Classes="MarkdownToolButton saveAction" Click="OnSaveClick" ToolTip.Tip="立即保存 (Ctrl+Enter)"><PathIcon Data="{StaticResource MdSaveIcon}" Width="16" Height="16"/></Button>
             <Button x:Name="_newButton" Classes="MarkdownToolButton" Click="OnNewClick" ToolTip.Tip="新建备忘录" IsVisible="False"><PathIcon Data="{StaticResource MdNewIcon}" Width="16" Height="16"/></Button>
@@ -70,7 +272,10 @@
         </Grid>
       </Border>
       <Grid Grid.Row="1" MinHeight="58">
-        <ae:TextEditor x:Name="_editor" Background="Transparent" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Microsoft YaHei UI, Segoe UI, sans-serif" FontSize="13" WordWrap="True" ShowLineNumbers="False" IsReadOnly="False" IsEnabled="True" Focusable="True" Padding="11,9" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" TextChanged="OnEditorTextChanged" PointerPressed="OnEditorPointerPressed"/>
+        <ae:TextEditor x:Name="_editor" Background="Transparent" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Microsoft YaHei UI, Segoe UI, sans-serif" FontSize="13" WordWrap="True" ShowLineNumbers="False" IsReadOnly="False" IsEnabled="True" Focusable="True" Padding="11,9" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" TextChanged="OnEditorTextChanged"/>
+        <Canvas x:Name="_imeOverlay" IsHitTestVisible="False" Panel.ZIndex="3">
+          <TextBlock x:Name="_imePreedit" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Microsoft YaHei UI, Segoe UI, sans-serif" FontSize="13" TextDecorations="Underline" IsVisible="False"/>
+        </Canvas>
         <TextBlock x:Name="_watermark" Text="写点什么…" Margin="13,11" Foreground="{StaticResource TextDisabledBrush}" IsHitTestVisible="False"/>
         <Border x:Name="_statusBadge" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="7" Padding="7,3" CornerRadius="6" Background="{StaticResource BgTertiaryBrush}" IsHitTestVisible="False" Opacity="0"><TextBlock x:Name="_statusText" FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"/></Border>
       </Grid>

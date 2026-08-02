@@ -1,7 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:Memo.Components"
              x:Class="Memo.Components.LabeledToggleSwitch"
-             Background="Transparent"
+             Background="{StaticResource TransparentBrush}"
+             FocusAdorner="{x:Null}"
              Focusable="True"
              x:Name="_root">
 
@@ -17,19 +19,11 @@
       <Setter Property="Cursor" Value="Hand"/>
     </Style>
     <!-- 聚焦态：暖橙描边，给键盘用户提供可见反馈 -->
-    <Style Selector="Border.toggle-track">
-      <Setter Property="Transitions">
-        <Transitions>
-          <BrushTransition Property="Background" Duration="{DynamicResource MotionFastDuration}" Easing="CubicEaseOut"/>
-          <BrushTransition Property="BorderBrush" Duration="{DynamicResource MotionFastDuration}" Easing="CubicEaseOut"/>
-        </Transitions>
-      </Setter>
-    </Style>
-    <Style Selector="UserControl:pointerover Border.toggle-track">
+    <Style Selector="local|LabeledToggleSwitch:pointerover Border.toggle-track">
       <Setter Property="Background" Value="{StaticResource SurfaceHoverBrush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource BorderHoverBrush}"/>
     </Style>
-    <Style Selector="UserControl:pressed Border.toggle-track">
+    <Style Selector="local|LabeledToggleSwitch.pressed Border.toggle-track">
       <Setter Property="Background" Value="{StaticResource SurfaceActiveBrush}"/>
     </Style>
     <Style Selector="Border.toggle-track.focused">
@@ -43,17 +37,10 @@
       <Setter Property="BoxShadow" Value="0 1 2 0 #33C06A48"/>
     </Style>
     <!-- 标签文字 -->
-    <Style Selector="Border.toggle-thumb">
-      <Setter Property="Transitions">
-        <Transitions>
-          <BrushTransition Property="Background" Duration="{DynamicResource MotionFastDuration}" Easing="CubicEaseOut"/>
-        </Transitions>
-      </Setter>
-    </Style>
-    <Style Selector="UserControl:pointerover Border.toggle-thumb">
+    <Style Selector="local|LabeledToggleSwitch:pointerover Border.toggle-thumb">
       <Setter Property="Background" Value="{StaticResource AccentHoverBrush}"/>
     </Style>
-    <Style Selector="UserControl:pressed Border.toggle-thumb">
+    <Style Selector="local|LabeledToggleSwitch.pressed Border.toggle-thumb">
       <Setter Property="Background" Value="{StaticResource AccentPressedBrush}"/>
     </Style>
     <Style Selector="TextBlock.toggle-label">
@@ -70,14 +57,16 @@
     </Style>
   </UserControl.Styles>
 
-  <Border x:Name="_track" Classes="toggle-track" PointerPressed="OnTrackPointerPressed">
+  <Border x:Name="_track"
+          Classes="toggle-track"
+          PointerPressed="OnTrackPointerPressed">
     <Grid x:Name="_grid" ColumnDefinitions="*,*">
       <!-- 两个选项文字（常驻，弱化色），滑块滑过时其上叠白色活动标签 -->
       <TextBlock Grid.Column="0" x:Name="_leftLabel" Classes="toggle-label" Foreground="{StaticResource TextTertiaryBrush}"/>
       <TextBlock Grid.Column="1" x:Name="_rightLabel" Classes="toggle-label" Foreground="{StaticResource TextTertiaryBrush}"/>
       <!-- 滑块：叠在活动列之上，自带白色活动标签 -->
       <Border x:Name="_thumb" Grid.Column="0" Classes="toggle-thumb" VerticalAlignment="Stretch">
-        <TextBlock x:Name="_thumbLabel" Classes="toggle-label" Foreground="White"/>
+        <TextBlock x:Name="_thumbLabel" Classes="toggle-label" Foreground="{StaticResource TextOnAccentBrush}"/>
       </Border>
     </Grid>
   </Border>

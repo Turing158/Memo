@@ -32,6 +32,7 @@ public partial class App : Application{
 
     public override void Initialize() {
         AvaloniaXamlLoader.Load(this);
+        ThemePreferences.Initialize(this);
         MotionPreferences.Initialize(this);
     }
 
@@ -51,6 +52,7 @@ public partial class App : Application{
                 _positionAnimations.Clear();
                 _hotkeyService?.Dispose();
                 _trayIcon?.Dispose();
+                ThemePreferences.Shutdown();
                 MotionPreferences.Shutdown();
                 desktop.Shutdown();
             }
@@ -58,12 +60,14 @@ public partial class App : Application{
             desktop.Exit += (_, _) => {
                 foreach (var animation in _positionAnimations.Values) animation.Cancel();
                 _positionAnimations.Clear();
+                ThemePreferences.Shutdown();
                 MotionPreferences.Shutdown();
             };
 
             async Task SaveSettingsAsync(AppSettings settings) {
                 mainWindow.CopyRuntimeWindowStateTo(settings);
                 _settings = settings;
+                ThemePreferences.ApplyMode(_settings.ThemeMode);
                 MotionPreferences.ApplyMode(_settings.MotionMode);
                 mainWindow.ApplySettings(_settings);
                 _hotkeyService?.Apply(_settings, mainWindow, ToggleLatestTopmostTarget, AddQuickMemoFromClipboard);
@@ -79,6 +83,7 @@ public partial class App : Application{
             void PreviewSettings(AppSettings settings) {
                 mainWindow.CopyRuntimeWindowStateTo(settings);
                 _settings = settings;
+                ThemePreferences.ApplyMode(_settings.ThemeMode);
                 mainWindow.ApplySettings(_settings);
             }
 
@@ -116,6 +121,7 @@ public partial class App : Application{
         var settings = await _settingsStorage.LoadAsync();
         await Dispatcher.UIThread.InvokeAsync(() => {
             _settings = settings;
+            ThemePreferences.ApplyMode(_settings.ThemeMode);
             MotionPreferences.ApplyMode(_settings.MotionMode);
             mainWindow.ApplySettings(_settings);
 

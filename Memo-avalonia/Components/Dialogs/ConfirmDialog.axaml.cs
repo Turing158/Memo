@@ -1,7 +1,8 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
-
 using Memo.UI;
+using Memo.Utils;
 
 namespace Memo.Components.Dialogs;
 
@@ -21,6 +22,10 @@ public partial class ConfirmDialog : Window{
         : this() {
         this.FindControl<TextBlock>("_titleText")!.Text = title;
         this.FindControl<TextBlock>("_messageText")!.Text = message;
+    }
+
+    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e) {
+        if (TitleBarDragHelper.CanStartDrag(this, e)) BeginMoveDrag(e);
     }
 
     private void OnConfirmClick(object? sender, RoutedEventArgs e) => CloseWithTransition(true);

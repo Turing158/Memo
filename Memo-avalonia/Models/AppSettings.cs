@@ -5,6 +5,7 @@ public class AppSettings {
     public const int MaximumMainWindowDockSize = 75;
     public const int DefaultMainWindowDockSize = 44;
 
+    public ThemeMode ThemeMode { get; set; } = ThemeMode.FollowSystem;
     public MotionMode MotionMode { get; set; } = MotionMode.AlwaysOn;
     public CloseButtonAction CloseButtonAction { get; set; } = CloseButtonAction.MinimizeToTray;
     public bool HasAskedCloseButtonAction { get; set; }
@@ -39,6 +40,7 @@ public class AppSettings {
     public static AppSettings CreateDefault() => new() { MotionMode = MotionMode.AlwaysOn };
 
     public AppSettings Clone() => new() {
+        ThemeMode = ThemeMode,
         MotionMode = MotionMode,
         CloseButtonAction = CloseButtonAction,
         HasAskedCloseButtonAction = HasAskedCloseButtonAction,

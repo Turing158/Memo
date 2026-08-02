@@ -86,10 +86,12 @@
            自定义标题栏（顶部左右圆角）
            ═══════════════════════════════════════════════ -->
       <Border Grid.Row="0"
+              x:Name="_titleBarDrag"
               Background="{StaticResource SurfacePrimaryBrush}"
               BorderBrush="{StaticResource BorderSubtleBrush}"
               BorderThickness="0,0,0,1"
-              CornerRadius="14,14,0,0">
+              CornerRadius="14,14,0,0"
+              PointerPressed="_titleBarDrag_PointerPressed">
         <Grid ColumnDefinitions="Auto,*,Auto" Margin="14,0">
           <!-- 左：Logo + 应用名 + 计数徽章 -->
           <StackPanel Grid.Column="0"
@@ -114,9 +116,7 @@
 
           <!-- 中：拖拽区域 -->
           <Border Grid.Column="1"
-                  x:Name="_titleBarDrag"
-                  Background="Transparent"
-                  PointerPressed="_titleBarDrag_PointerPressed"/>
+                  Background="Transparent"/>
 
           <!-- 右：操作按钮 -->
           <StackPanel Grid.Column="2"
@@ -183,7 +183,7 @@
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextPrimaryBrush}"
                            HorizontalAlignment="Center"/>
-                <TextBlock Text="在上方写下第一条 Markdown 备忘录&#x0a;按 Enter 保存"
+                <TextBlock Text="在上方写下第一条 Markdown 备忘录&#x0a;按 Ctrl+Enter 新增"
                            FontSize="12.5"
                            Foreground="{StaticResource TextTertiaryBrush}"
                            TextAlignment="Center"

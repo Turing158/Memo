@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Primitives.PopupPositioning;
 using Avalonia.Input;
+using Avalonia.Input.TextInput;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -13,6 +14,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using AvaloniaEdit.Editing;
 using AvaloniaEdit.Document;
 using AvaloniaEdit.Rendering;
 using Memo.Components.Dialogs;
@@ -44,7 +46,24 @@ public partial class MarkdownEditor : UserControl {
     private readonly Stack<EditorState> _undo = new();
     private readonly Stack<EditorState> _redo = new();
     private readonly MarkdownProjectionSnapshot _projectionSnapshot = new();
+    private readonly MarkdownQuoteRenderer _quoteRenderer;
     private readonly MarkdownInlineGenerator _inlineGenerator;
+    private readonly MarkdownEditorImeClient _imeClient;
+    private readonly IReadOnlyList<(Button Button, MenuItem MenuItem)> _responsiveToolbarItems;
+    private static readonly TimeSpan ToolbarMenuCloseDelay = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan ToolbarMenuPointerCheckInterval = TimeSpan.FromMilliseconds(50);
+    private const double ToolbarMenuHiddenOffset = -4;
+    private const double ToolbarButtonWidth = 29;
+    private const double ToolbarItemSpacing = 1;
+    private const int FixedToolbarItemCount = 4;
+    private Button? _activeToolbarMenuButton;
+    private MenuFlyout? _activeToolbarMenu;
+    private InputElement? _toolbarMenuInputRoot;
+    private readonly DispatcherTimer _toolbarMenuCloseTimer;
+    private DateTime? _toolbarMenuPointerOutsideSince;
+    private bool _toolbarMenuClosing;
+    private bool _toolbarMenuCloseCommitted;
+    private bool _responsiveToolbarUpdateQueued;
     private DispatcherTimer? _statusTimer;
     private bool _suppressTextChanged;
     private bool _projectionRefreshQueued;
@@ -56,6 +75,7 @@ public partial class MarkdownEditor : UserControl {
     private bool _hasPendingFormatOverride;
     private int _pendingCaretVisible = -1;
     private bool _updatingSelection;
+    private bool _tableDeleteConfirmationPending;
     private (int Offset, int RemovalLength, int InsertionLength)? _pendingVisibleTextChange;
 
     public MarkdownEditor() : this(null) { }
@@ -63,19 +83,77 @@ public partial class MarkdownEditor : UserControl {
     internal MarkdownEditor(string? imageRoot) {
         _imageStore = new MarkdownImageStore(imageRoot);
         InitializeComponent();
-        _editor.TextArea.SelectionBrush = (IBrush)Application.Current!.Resources["BgHoverBrush"]!;
+        _responsiveToolbarItems = [
+            (_bulletListButton, _bulletListMenuItem),
+            (_orderedListButton, _orderedListMenuItem),
+            (_taskListButton, _taskListMenuItem),
+            (_quoteButton, _quoteMenuItem),
+            (_codeButton, _codeMenuItem),
+            (_codeBlockButton, _codeBlockMenuItem),
+            (_tableButton, _tableMenuItem),
+            (_horizontalRuleButton, _horizontalRuleMenuItem),
+            (_linkButton, _linkMenuItem),
+            (_localImageButton, _localImageMenuItem),
+            (_remoteImageButton, _remoteImageMenuItem),
+        ];
+        _formatToolbar.PropertyChanged += OnResponsiveToolbarPropertyChanged;
+        _imeClient = new MarkdownEditorImeClient(this);
+        _toolbarMenuCloseTimer = new DispatcherTimer { Interval = ToolbarMenuPointerCheckInterval };
+        _toolbarMenuCloseTimer.Tick += OnToolbarMenuCloseTimerTick;
+        var resources = Application.Current!.Resources;
+        // The custom selection renderer draws both normal text and quote blocks.
+        // Keep AvaloniaEdit's built-in selection layer transparent so it cannot
+        // cover the quote-specific selection color in narrower popout editors.
+        _editor.TextArea.SelectionBrush = Brushes.Transparent;
         _editor.TextArea.SelectionForeground = (IBrush)Application.Current.Resources["TextPrimaryBrush"]!;
         _editor.TextArea.Caret.CaretBrush = (IBrush)Application.Current.Resources["AccentPrimaryBrush"]!;
         _autoSave = new DebouncedAction(TimeSpan.FromMilliseconds(500));
-        _editor.TextArea.TextView.LineTransformers.Add(new MarkdownColorizer(_model, _projectionSnapshot));
+        _quoteRenderer = new MarkdownQuoteRenderer(
+            _model,
+            _projectionSnapshot,
+            (IBrush)resources["SurfaceActiveBrush"]!,
+            (IBrush)resources["BorderSubtleBrush"]!);
+        _editor.TextArea.TextView.BackgroundRenderers.Add(_quoteRenderer);
+        _editor.TextArea.TextView.BackgroundRenderers.Add(new MarkdownInlineCodeRenderer(
+            _model,
+            _projectionSnapshot,
+            (IBrush)resources["AccentSubtleBrush"]!));
+        _editor.TextArea.TextView.BackgroundRenderers.Add(new MarkdownSelectionRenderer(
+            _editor.TextArea,
+            (IBrush)resources["BgHoverBrush"]!,
+            (IBrush)resources["AccentSubtlePressedBrush"]!));
+        _editor.TextArea.TextView.ElementGenerators.Add(new MarkdownQuotePaddingGenerator(
+            _model, _projectionSnapshot));
+        _editor.TextArea.TextView.ElementGenerators.Add(new MarkdownInlineCodePaddingGenerator(
+            _model, _projectionSnapshot));
+        _editor.TextArea.TextView.LineTransformers.Add(new MarkdownColorizer(
+            _model, _projectionSnapshot, (IBrush)resources["TextSecondaryBrush"]!));
         _inlineGenerator = new MarkdownInlineGenerator(
             _model, _projectionSnapshot, _imageStore.RootDirectory, _editor.TextArea.TextView,
+            Resources["MarkdownTaskCheckBoxTheme"] as ControlTheme,
             ToggleTask, MoveCaretToVisibleOffset, UpdateTableSource);
         _inlineGenerator.EnableEmbeddedControlLayout();
         _editor.TextArea.TextView.ElementGenerators.Add(_inlineGenerator);
         _editor.Document.Changing += OnEditorDocumentChanging;
-        _editor.TextArea.SelectionChanged += (_, _) => OnEditorSelectionChanged();
-        _editor.TextArea.Caret.PositionChanged += (_, _) => OnEditorSelectionChanged();
+        _editor.AddHandler(InputElement.PointerPressedEvent, OnEditorPointerPressed,
+            RoutingStrategies.Tunnel, handledEventsToo: true);
+        _editor.TextArea.SelectionChanged += (_, _) => {
+            OnEditorSelectionChanged();
+            _imeClient.NotifySelectionChanged();
+        };
+        _editor.TextArea.Caret.PositionChanged += (_, _) => {
+            OnEditorSelectionChanged();
+            UpdateImePreeditLayout();
+            _imeClient.NotifyCaretChanged();
+        };
+        _editor.TextArea.AddHandler(
+            InputElement.TextInputMethodClientRequestedEvent,
+            OnTextInputMethodClientRequested,
+            RoutingStrategies.Bubble);
+        _editor.TextArea.TextView.ScrollOffsetChanged += (_, _) => {
+            UpdateImePreeditLayout();
+            _imeClient.NotifyCursorRectangleChanged();
+        };
         _editor.AddHandler(InputElement.KeyDownEvent, OnEditorKeyDown, RoutingStrategies.Tunnel);
         _editor.AddHandler(InputElement.TextInputEvent, OnEditorTextInput, RoutingStrategies.Tunnel);
         Loaded += OnLoaded;
@@ -83,6 +161,13 @@ public partial class MarkdownEditor : UserControl {
             _projectionRefreshTicket++;
             _projectionRefreshQueued = false;
             _projectionSnapshot.Invalidate();
+            _imeClient.ClearPreedit();
+            _toolbarMenuCloseTimer.Stop();
+            _toolbarMenuPointerOutsideSince = null;
+            _toolbarMenuClosing = false;
+            _toolbarMenuCloseCommitted = false;
+            _responsiveToolbarUpdateQueued = false;
+            DetachToolbarMenuPointerHandlers();
             _inlineGenerator.Dispose();
             _autoSave.Dispose();
             _statusTimer?.Stop();
@@ -115,6 +200,7 @@ public partial class MarkdownEditor : UserControl {
     internal int SuccessfulImageLoadCount => _inlineGenerator.SuccessfulImageLoadCount;
     internal int FailedImageLoadCount => _inlineGenerator.FailedImageLoadCount;
     internal Action<Uri>? LinkLauncher { get; set; }
+    internal Func<Task<bool>>? TableDeleteConfirmationAsync { get; set; }
 
     public void BeginNew(string? draft = null) {
         ResetPendingFormats();
@@ -179,6 +265,45 @@ public partial class MarkdownEditor : UserControl {
         AutomationProperties.SetName(_moreButton, "更多格式");
         AutomationProperties.SetName(_saveButton, "立即保存");
         AutomationProperties.SetName(_newButton, "新建备忘录");
+        QueueResponsiveToolbarUpdate();
+    }
+
+    private void OnResponsiveToolbarPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e) {
+        if (e.Property == Visual.BoundsProperty) QueueResponsiveToolbarUpdate();
+    }
+
+    private void QueueResponsiveToolbarUpdate() {
+        if (_responsiveToolbarUpdateQueued) return;
+        _responsiveToolbarUpdateQueued = true;
+        Dispatcher.UIThread.Post(() => {
+            _responsiveToolbarUpdateQueued = false;
+            UpdateResponsiveToolbar();
+        }, DispatcherPriority.Render);
+    }
+
+    private void UpdateResponsiveToolbar() {
+        var itemWidth = ToolbarButtonWidth + ToolbarItemSpacing;
+        var fixedToolbarWidth = FixedToolbarItemCount * ToolbarButtonWidth
+            + (FixedToolbarItemCount - 1) * ToolbarItemSpacing;
+        var availableWidth = Math.Max(0, _formatToolbar.Bounds.Width - fixedToolbarWidth);
+        var visibleCount = Math.Clamp(
+            (int)Math.Floor(availableWidth / itemWidth),
+            0,
+            _responsiveToolbarItems.Count);
+
+        for (var index = 0; index < _responsiveToolbarItems.Count; index++) {
+            var promoted = index < visibleCount;
+            var (button, menuItem) = _responsiveToolbarItems[index];
+            button.IsVisible = promoted;
+            menuItem.IsVisible = !promoted;
+        }
+
+        var hasFormatOverflow = visibleCount < _responsiveToolbarItems.Count;
+        _editSourceButton.IsVisible = !hasFormatOverflow;
+        _editSourceMenuItem.IsVisible = hasFormatOverflow;
+        _responsiveMenuSeparator.IsVisible = hasFormatOverflow;
+        _moreButton.IsVisible = hasFormatOverflow;
+        if (!hasFormatOverflow && MoreMenu.IsOpen) MoreMenu.Hide();
     }
 
     private void OnEditorTextChanged(object? sender, EventArgs e) {
@@ -195,6 +320,7 @@ public partial class MarkdownEditor : UserControl {
         if (before.Markdown != Markdown) { _undo.Push(before); _redo.Clear(); }
         QueueProjectionRefresh(selection.Start, selection.End);
         UpdateFormatButtonStates();
+        _imeClient.NotifyTextChanged();
         NotifyChanged();
     }
 
@@ -204,11 +330,76 @@ public partial class MarkdownEditor : UserControl {
             : (e.Offset, e.RemovalLength, e.InsertionLength);
     }
 
+    private void OnTextInputMethodClientRequested(object? sender, TextInputMethodClientRequestedEventArgs e) {
+        if (!_editor.IsReadOnly && _editor.IsEnabled) e.Client = _imeClient;
+    }
+
+    internal Visual EditorTextArea => _editor.TextArea;
+
+    internal string ImeSurroundingText {
+        get {
+            var document = _editor.Document;
+            if (document == null || document.LineCount == 0) return string.Empty;
+            var line = document.GetLineByNumber(_editor.TextArea.Caret.Line);
+            return document.GetText(line.Offset, line.Length);
+        }
+    }
+
+    internal Rect ImeCursorRectangle {
+        get {
+            var caret = _editor.TextArea.Caret.CalculateCaretRectangle();
+            var transform = _editor.TextArea.TextView.TransformToVisual(_editor.TextArea);
+            return transform is { } matrix ? caret.TransformToAABB(matrix) : caret;
+        }
+    }
+
+    internal TextSelection ImeSelection {
+        get {
+            var area = _editor.TextArea;
+            var line = area.Document.GetLineByNumber(area.Caret.Line);
+            var absoluteStart = area.Selection.SurroundingSegment?.Offset ?? area.Caret.Offset;
+            var absoluteEnd = absoluteStart + area.Selection.Length;
+            var start = Math.Clamp(absoluteStart - line.Offset, 0, line.Length);
+            var end = Math.Clamp(absoluteEnd - line.Offset, start, line.Length);
+            return new TextSelection(start, end);
+        }
+    }
+
+    internal void SetImeSelection(TextSelection value) {
+        var area = _editor.TextArea;
+        var line = area.Document.GetLineByNumber(area.Caret.Line);
+        var start = Math.Clamp(line.Offset + value.Start, line.Offset, line.EndOffset);
+        var end = Math.Clamp(line.Offset + value.End, start, line.EndOffset);
+        _editor.SelectionStart = start;
+        _editor.SelectionLength = end - start;
+    }
+
+    internal void SetImePreeditText(string? text, int? cursorPosition) {
+        void Update() {
+            _imePreedit.Text = text ?? string.Empty;
+            _imePreedit.IsVisible = !string.IsNullOrEmpty(text);
+            UpdateImePreeditLayout();
+        }
+
+        if (Dispatcher.UIThread.CheckAccess()) Update();
+        else Dispatcher.UIThread.Post(Update, DispatcherPriority.Input);
+    }
+
+    private void UpdateImePreeditLayout() {
+        if (!_imePreedit.IsVisible || string.IsNullOrEmpty(_imePreedit.Text)) return;
+        var caret = _imeClient.CursorRectangle;
+        var topLeft = _editor.TextArea.TranslatePoint(caret.Position, _imeOverlay);
+        if (topLeft is not { } position) return;
+        Canvas.SetLeft(_imePreedit, position.X);
+        Canvas.SetTop(_imePreedit, position.Y);
+    }
+
     private async void OnEditorKeyDown(object? sender, KeyEventArgs e) {
         var control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+        if (_imeClient.IsComposing && !control) return;
         if (IsTableInputSource(e.Source)) {
             if (control && e.Key == Key.Enter) { e.Handled = true; await RequestSaveAsync(completeEditing: true); }
-            else if (e.Key == Key.Escape) { e.Handled = true; await CancelEditingAsync(); }
+            else if (e.Key == Key.Escape) { _imeClient.ClearPreedit(); e.Handled = true; await CancelEditingAsync(); }
             return;
         }
         if (control && (e.Key == Key.Y || (e.Key == Key.Z && e.KeyModifiers.HasFlag(KeyModifiers.Shift)))) { e.Handled = true; ResetPendingFormats(); Redo(); return; }
@@ -218,19 +409,41 @@ public partial class MarkdownEditor : UserControl {
         if (control && e.Key == Key.I) { ApplyFormat(MarkdownFormatCommand.Italic); e.Handled = true; return; }
         if (control && e.Key == Key.K) { e.Handled = true; await EditLinkAsync(); return; }
         if (control && e.Key == Key.Enter) { e.Handled = true; await RequestSaveAsync(completeEditing: true); return; }
-        if (e.Key == Key.Escape) { e.Handled = true; await CancelEditingAsync(); return; }
+        if (e.Key == Key.Escape) { _imeClient.ClearPreedit(); e.Handled = true; await CancelEditingAsync(); return; }
+        if ((e.Key == Key.Back || e.Key == Key.Delete) && TableBeforeEmptyTrailingLine() is { } table) {
+            e.Handled = true;
+            ResetPendingFormats();
+            if (_tableDeleteConfirmationPending) return;
+            _tableDeleteConfirmationPending = true;
+            try {
+                if (await ConfirmTableDeletionAsync()) DeleteTable(table);
+            }
+            finally {
+                _tableDeleteConfirmationPending = false;
+                _editor.Focus();
+            }
+            return;
+        }
+        if ((e.Key == Key.Back || e.Key == Key.Delete) && RuleBeforeEmptyTrailingLine() is { } rule) {
+            e.Handled = true;
+            ResetPendingFormats();
+            DeleteRule(rule);
+            return;
+        }
         if ((e.Key == Key.Back || e.Key == Key.Delete) && TryDeleteObject(e.Key)) { ResetPendingFormats(); e.Handled = true; return; }
         if (!control && e.Key == Key.Back && TryRemoveListMarker()) { ResetPendingFormats(); e.Handled = true; return; }
         if (e.Key == Key.Tab && TryIndentList(e.KeyModifiers.HasFlag(KeyModifiers.Shift))) { e.Handled = true; return; }
+        if (e.Key == Key.Left && e.KeyModifiers == KeyModifiers.None && TryMoveCaretBeforeAtomicListPrefix()) { e.Handled = true; return; }
         if (e.Key == Key.Enter) ResetPendingFormats();
         else if (e.Key is Key.Left or Key.Right or Key.Up or Key.Down or Key.Home or Key.End or Key.PageUp or Key.PageDown)
             ResetPendingFormats();
-        if (IsNewMemo && e.Key == Key.Enter && !e.KeyModifiers.HasFlag(KeyModifiers.Shift)) { e.Handled = true; await RequestSaveAsync(completeEditing: true); }
+        if (e.Key == Key.Enter && !e.KeyModifiers.HasFlag(KeyModifiers.Shift) && TryContinueQuote()) { e.Handled = true; }
         else if (e.Key == Key.Enter && !e.KeyModifiers.HasFlag(KeyModifiers.Shift) && TryContinueList()) { e.Handled = true; }
     }
 
     private void OnEditorTextInput(object? sender, TextInputEventArgs e) {
         if (IsTableInputSource(e.Source)) return;
+        if (!string.IsNullOrEmpty(e.Text)) _imeClient.ClearPreedit();
         if (!_hasPendingFormatOverride || string.IsNullOrEmpty(e.Text)) return;
         if (e.Text.Contains('\n') || e.Text.Contains('\r') || _editor.SelectionLength > 0) {
             ResetPendingFormats();
@@ -239,9 +452,7 @@ public partial class MarkdownEditor : UserControl {
 
         e.Handled = true;
         var inherited = ActiveInlineFormatsAtCaret();
-        var source = _model.SourceOffsetFromVisible(
-            _editor.CaretOffset,
-            trailingAffinity: _editor.CaretOffset == 0 || _editor.CaretOffset >= _model.VisibleText.Length);
+        var source = _model.SourceOffsetForInsertion(_editor.CaretOffset);
         var result = new MarkdownEditResult(
             Markdown.Insert(source, e.Text), source, source + e.Text.Length);
         foreach (var command in InlineFormatCommands) {
@@ -259,6 +470,16 @@ public partial class MarkdownEditor : UserControl {
         if (!_editor.IsKeyboardFocusWithin)
             _editor.Focus();
         var point = e.GetPosition(_editor);
+        var quoteExitOffset = e.GetCurrentPoint(_editor).Properties.IsLeftButtonPressed &&
+                              !e.KeyModifiers.HasFlag(KeyModifiers.Shift)
+            ? QuoteExitOffsetFromPoint(point)
+            : null;
+        if (quoteExitOffset is { } exitOffset) {
+            e.Handled = true;
+            Dispatcher.UIThread.Post(
+                () => MoveCaretToVisibleOffset(exitOffset), DispatcherPriority.Input);
+            return;
+        }
         Dispatcher.UIThread.Post(() => {
             var offset = VisibleOffsetFromPoint(point) ?? _editor.CaretOffset;
             var span = _model.VisualAt(offset, MarkdownVisualKind.Task);
@@ -276,6 +497,33 @@ public partial class MarkdownEditor : UserControl {
         return clicked is { } position ? _editor.Document.GetOffset(position.Location) : null;
     }
 
+    private int? QuoteExitOffsetFromPoint(Point point) {
+        var textView = _editor.TextArea.TextView;
+        var document = textView.Document;
+        if (document == null || !textView.VisualLinesValid ||
+            _editor.TranslatePoint(point, textView) is not { } viewPoint)
+            return null;
+
+        foreach (var quote in _model.Spans.Where(span =>
+                     span.Kind == MarkdownVisualKind.Quote &&
+                     span.End >= 0 && span.End < _model.VisibleText.Length &&
+                     _model.VisibleText[span.End] == '\n')) {
+            var lastQuoteOffset = Math.Clamp(quote.End - 1, 0, Math.Max(0, document.TextLength));
+            var lastQuoteLine = document.GetLineByOffset(lastQuoteOffset).LineNumber;
+            var visualLine = textView.VisualLines.FirstOrDefault(line =>
+                line.FirstDocumentLine.LineNumber <= lastQuoteLine &&
+                line.LastDocumentLine.LineNumber >= lastQuoteLine &&
+                line.Elements.OfType<QuotePaddingElement>().Any(padding => padding.BottomSpacing > 0));
+            if (visualLine == null) continue;
+
+            var lineBottom = visualLine.VisualTop + visualLine.Height - textView.ScrollOffset.Y;
+            var quoteCardBottom = lineBottom - MarkdownQuoteSpacing.VerticalMargin;
+            if (viewPoint.Y >= quoteCardBottom && viewPoint.Y < lineBottom)
+                return Math.Min(quote.End + 1, _model.VisibleText.Length);
+        }
+        return null;
+    }
+
     private void MoveCaretToVisibleOffset(int offset) {
         var safeOffset = Math.Clamp(offset, 0, _model.VisibleText.Length);
         _editor.Focus();
@@ -290,6 +538,219 @@ public partial class MarkdownEditor : UserControl {
     private void OnNewClick(object? sender, RoutedEventArgs e) => NewRequested?.Invoke(this, EventArgs.Empty);
     private void OnFormatClick(object? sender, RoutedEventArgs e) { if (sender is Button { Tag: string tag } && Enum.TryParse<MarkdownFormatCommand>(tag, out var command)) ApplyFormat(command); }
     private void OnFormatMenuClick(object? sender, RoutedEventArgs e) { if (sender is MenuItem { Tag: string tag } && Enum.TryParse<MarkdownFormatCommand>(tag, out var command)) ApplyFormat(command); }
+    private MenuFlyout HeadingMenu => (MenuFlyout)_headingButton.Flyout!;
+    private MenuFlyout MoreMenu => (MenuFlyout)_moreButton.Flyout!;
+    private void OnHeadingPointerEntered(object? sender, PointerEventArgs e) {
+        _toolbarMenuPointerOutsideSince = null;
+        ShowToolbarMenu(_headingButton, HeadingMenu);
+    }
+    private void OnHeadingPointerExited(object? sender, PointerEventArgs e) => ScheduleToolbarMenuClose(HeadingMenu);
+    private void OnHeadingMenuOpened(object? sender, EventArgs e) => OnToolbarMenuOpened(_headingButton, HeadingMenu);
+    private void OnToolbarMenuClosing(object? sender, CancelEventArgs e) {
+        if (sender is not MenuFlyout menu || !ReferenceEquals(_activeToolbarMenu, menu)) return;
+        if (_toolbarMenuCloseCommitted) {
+            _toolbarMenuCloseCommitted = false;
+            return;
+        }
+
+        var presenter = ToolbarMenuPresenter(menu);
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (!MotionPreferences.AnimationsEnabled || presenter == null || topLevel == null) return;
+        if (_toolbarMenuClosing) {
+            e.Cancel = true;
+            return;
+        }
+
+        e.Cancel = true;
+        _toolbarMenuClosing = true;
+        presenter.IsHitTestVisible = false;
+        var transform = EnsureToolbarMenuTransform(presenter);
+        var fromOpacity = presenter.Opacity;
+        var fromOffset = transform.Y;
+        MotionAnimations.Start(presenter, topLevel, MotionPreferences.FastDuration, new CubicEaseIn(),
+            progress => {
+                presenter.Opacity = MotionAnimations.Lerp(fromOpacity, 0, progress);
+                transform.Y = MotionAnimations.Lerp(fromOffset, ToolbarMenuHiddenOffset, progress);
+            },
+            () => {
+                if (!_toolbarMenuClosing || !ReferenceEquals(_activeToolbarMenu, menu)) return;
+                _toolbarMenuCloseCommitted = true;
+                menu.Hide();
+            });
+    }
+    private void OnHeadingMenuClosed(object? sender, EventArgs e) => OnToolbarMenuClosed(_headingButton, HeadingMenu);
+    private void OnMorePointerEntered(object? sender, PointerEventArgs e) {
+        _toolbarMenuPointerOutsideSince = null;
+        ShowToolbarMenu(_moreButton, MoreMenu);
+    }
+    private void OnMorePointerExited(object? sender, PointerEventArgs e) => ScheduleToolbarMenuClose(MoreMenu);
+    private void OnMoreMenuOpened(object? sender, EventArgs e) => OnToolbarMenuOpened(_moreButton, MoreMenu);
+    private void OnMoreMenuClosed(object? sender, EventArgs e) => OnToolbarMenuClosed(_moreButton, MoreMenu);
+    private void ShowToolbarMenu(Button button, MenuFlyout menu) {
+        if (ReferenceEquals(_activeToolbarMenu, menu) && _toolbarMenuClosing) {
+            CancelToolbarMenuClosing(menu);
+        }
+        if (_activeToolbarMenu is { IsOpen: true } activeMenu && !ReferenceEquals(activeMenu, menu)) {
+            var presenter = ToolbarMenuPresenter(activeMenu);
+            if (presenter != null) MotionAnimations.Cancel(presenter);
+            _toolbarMenuCloseCommitted = true;
+            activeMenu.Hide();
+        }
+        if (!menu.IsOpen) menu.ShowAt(button);
+    }
+
+    private void CancelToolbarMenuClosing(MenuFlyout menu) {
+        var presenter = ToolbarMenuPresenter(menu);
+        if (presenter != null) {
+            MotionAnimations.Cancel(presenter);
+            presenter.IsHitTestVisible = true;
+            presenter.Opacity = 1;
+            EnsureToolbarMenuTransform(presenter).Y = 0;
+        }
+        _toolbarMenuClosing = false;
+        _toolbarMenuCloseCommitted = false;
+        CancelToolbarMenuClose();
+    }
+
+    private void OnToolbarMenuOpened(Button button, MenuFlyout menu) {
+        if (_activeToolbarMenuButton != null && !ReferenceEquals(_activeToolbarMenuButton, button)) {
+            _activeToolbarMenuButton.Classes.Set("menuOpen", false);
+        }
+        DetachToolbarMenuPointerHandlers();
+        _activeToolbarMenuButton = button;
+        _activeToolbarMenu = menu;
+        _toolbarMenuClosing = false;
+        _toolbarMenuCloseCommitted = false;
+        button.Classes.Set("menuOpen", true);
+        ConfigureToolbarPopupRoot(menu.Items.OfType<MenuItem>().FirstOrDefault());
+        AttachToolbarMenuPointerHandlers();
+        _toolbarMenuPointerOutsideSince = null;
+        if (!_toolbarMenuCloseTimer.IsEnabled) _toolbarMenuCloseTimer.Start();
+        AnimateToolbarMenuIn(menu);
+    }
+    private void OnToolbarMenuClosed(Button button, MenuFlyout menu) {
+        button.Classes.Set("menuOpen", false);
+        if (!ReferenceEquals(_activeToolbarMenu, menu)) return;
+        var presenter = ToolbarMenuPresenter(menu);
+        if (presenter != null) {
+            MotionAnimations.Cancel(presenter);
+            presenter.IsHitTestVisible = true;
+            presenter.Opacity = 1;
+            EnsureToolbarMenuTransform(presenter).Y = 0;
+        }
+        _toolbarMenuClosing = false;
+        _toolbarMenuCloseCommitted = false;
+        CancelToolbarMenuClose();
+        DetachToolbarMenuPointerHandlers();
+        _activeToolbarMenuButton = null;
+        _activeToolbarMenu = null;
+    }
+
+    private void AnimateToolbarMenuIn(MenuFlyout menu) {
+        var presenter = ToolbarMenuPresenter(menu);
+        if (presenter == null) return;
+        var transform = EnsureToolbarMenuTransform(presenter);
+        presenter.IsHitTestVisible = true;
+        presenter.Opacity = 0;
+        transform.Y = ToolbarMenuHiddenOffset;
+
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel == null || !MotionPreferences.AnimationsEnabled) {
+            presenter.Opacity = 1;
+            transform.Y = 0;
+            return;
+        }
+
+        MotionAnimations.Start(presenter, topLevel, MotionPreferences.FastDuration, new CubicEaseOut(),
+            progress => {
+                presenter.Opacity = progress;
+                transform.Y = MotionAnimations.Lerp(ToolbarMenuHiddenOffset, 0, progress);
+            });
+    }
+
+    private static Control? ToolbarMenuPresenter(MenuFlyout menu) =>
+        menu.Items.OfType<MenuItem>().FirstOrDefault()?.Parent as Control;
+
+    private static void ConfigureToolbarPopupRoot(Control? content) {
+        if (content == null || TopLevel.GetTopLevel(content) is not PopupRoot popupRoot) return;
+        popupRoot.Background = Brushes.Transparent;
+        popupRoot.TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
+        popupRoot.TransparencyBackgroundFallback = Brushes.Transparent;
+        popupRoot.WindowManagerAddShadowHint = false;
+    }
+
+    private static TranslateTransform EnsureToolbarMenuTransform(Control presenter) {
+        if (presenter.RenderTransform is TranslateTransform transform) return transform;
+        transform = new TranslateTransform { Y = ToolbarMenuHiddenOffset };
+        presenter.RenderTransform = transform;
+        return transform;
+    }
+    private void OnToolbarMenuPointerEntered(object? sender, PointerEventArgs e) => _toolbarMenuPointerOutsideSince = null;
+    private void OnToolbarMenuPointerExited(object? sender, PointerEventArgs e) => ScheduleToolbarMenuClose(_activeToolbarMenu);
+    private void ScheduleToolbarMenuClose(MenuFlyout? menu) {
+        if (menu == null || !menu.IsOpen) return;
+        if (!ReferenceEquals(_activeToolbarMenu, menu)) return;
+        _toolbarMenuPointerOutsideSince ??= DateTime.UtcNow;
+        if (!_toolbarMenuCloseTimer.IsEnabled) _toolbarMenuCloseTimer.Start();
+    }
+    private void CancelToolbarMenuClose() {
+        _toolbarMenuCloseTimer.Stop();
+        _toolbarMenuPointerOutsideSince = null;
+    }
+    private void OnToolbarMenuCloseTimerTick(object? sender, EventArgs e) {
+        var menu = _activeToolbarMenu;
+        if (menu == null || !menu.IsOpen) {
+            CancelToolbarMenuClose();
+            return;
+        }
+        if (_toolbarMenuInputRoot == null) AttachToolbarMenuPointerHandlers();
+        if (IsPointerWithin(_activeToolbarMenuButton) || IsPointerWithin(_toolbarMenuInputRoot)) {
+            _toolbarMenuPointerOutsideSince = null;
+            return;
+        }
+        _toolbarMenuPointerOutsideSince ??= DateTime.UtcNow;
+        if (DateTime.UtcNow - _toolbarMenuPointerOutsideSince < ToolbarMenuCloseDelay) return;
+        CancelToolbarMenuClose();
+        menu.Hide();
+    }
+    private static bool IsPointerWithin(Visual? visual) {
+        if (visual == null || TopLevel.GetTopLevel(visual) == null) return false;
+        var topLevel = TopLevel.GetTopLevel(visual)!;
+        var topLeft = visual.PointToScreen(new Point(0, 0));
+        var size = visual.Bounds.Size;
+        var scaling = topLevel.RenderScaling;
+        var cursor = System.Windows.Forms.Cursor.Position;
+        return new Rect(topLeft.X, topLeft.Y, size.Width * scaling, size.Height * scaling)
+            .Contains(new Point(cursor.X, cursor.Y));
+    }
+    private void AttachToolbarMenuPointerHandlers() {
+        var firstItem = _activeToolbarMenu?.Items.OfType<MenuItem>().FirstOrDefault();
+        var root = firstItem?.Parent as InputElement;
+        if (ReferenceEquals(_toolbarMenuInputRoot, root)) return;
+        DetachToolbarMenuPointerHandlers();
+        _toolbarMenuInputRoot = root;
+        if (root == null) return;
+        root.PointerEntered += OnToolbarMenuPointerEntered;
+        root.PointerExited += OnToolbarMenuPointerExited;
+    }
+    private void DetachToolbarMenuPointerHandlers() {
+        if (_toolbarMenuInputRoot != null) {
+            _toolbarMenuInputRoot.PointerEntered -= OnToolbarMenuPointerEntered;
+            _toolbarMenuInputRoot.PointerExited -= OnToolbarMenuPointerExited;
+        }
+        _toolbarMenuInputRoot = null;
+    }
+    private void OnHeadingMenuClick(object? sender, RoutedEventArgs e) {
+        if (sender is not MenuItem { Tag: string tag } || !int.TryParse(tag, out var level)) return;
+        var command = level switch {
+            1 => MarkdownFormatCommand.Heading,
+            2 => MarkdownFormatCommand.Heading2,
+            3 => MarkdownFormatCommand.Heading3,
+            4 => MarkdownFormatCommand.Heading4,
+            _ => MarkdownFormatCommand.Heading,
+        };
+        ApplyFormat(command);
+    }
     private async void OnLinkClick(object? sender, RoutedEventArgs e) => await EditLinkAsync();
 
     private void ApplyFormat(MarkdownFormatCommand command) {
@@ -313,7 +774,7 @@ public partial class MarkdownEditor : UserControl {
 
     private void ApplyResult(MarkdownEditResult result) {
         PushUndo();
-        _model.SetMarkdown(result.Text);
+        _model.SetEditableMarkdown(result.Text);
         RefreshProjection(_model.VisibleOffsetFromSource(result.SelectionStart), _model.VisibleOffsetFromSource(result.SelectionEnd));
         NotifyChanged();
         _editor.Focus();
@@ -321,10 +782,157 @@ public partial class MarkdownEditor : UserControl {
 
     private void OnEditorSelectionChanged() {
         if (_updatingSelection) return;
+        // TextChanged rebuilds the model before the queued projection replaces the editor text.
+        // Avoid applying offsets from the new projection to the still-old document in that gap.
+        if (_projectionSnapshot.IsCurrent(_editor.Document, _model)) {
+            if (RedirectCaretFromTask()) return;
+            if (RedirectCaretFromOrderedListMarker()) return;
+            if (RedirectCaretFromTable()) return;
+            if (RedirectCaretFromRule()) return;
+        }
         if (_hasPendingFormatOverride &&
             (_editor.SelectionLength > 0 || _editor.CaretOffset != _pendingCaretVisible))
             ResetPendingFormats();
         UpdateFormatButtonStates();
+    }
+
+    private bool RedirectCaretFromTask() {
+        if (_editor.SelectionLength != 0) return false;
+
+        var caret = _editor.CaretOffset;
+        var target = TaskCaretTarget(caret);
+        if (target == caret) return false;
+
+        _updatingSelection = true;
+        try {
+            _editor.SelectionStart = target;
+            _editor.SelectionLength = 0;
+        }
+        finally {
+            _updatingSelection = false;
+        }
+        if (_hasPendingFormatOverride) ResetPendingFormats();
+        UpdateFormatButtonStates();
+        return true;
+    }
+
+    private int TaskCaretTarget(int caret) {
+        var task = _model.Spans
+            .Where(span => span.Kind == MarkdownVisualKind.Task &&
+                caret >= span.Start && caret < span.End)
+            .Select(span => (MarkdownVisualSpan?)span)
+            .FirstOrDefault();
+        return task is { } span ? span.End : caret;
+    }
+
+    private bool RedirectCaretFromOrderedListMarker() {
+        if (_editor.SelectionLength != 0) return false;
+
+        var caret = _editor.CaretOffset;
+        var target = OrderedListMarkerCaretTarget(caret);
+        if (target == caret) return false;
+
+        _updatingSelection = true;
+        try {
+            _editor.SelectionStart = target;
+            _editor.SelectionLength = 0;
+        }
+        finally {
+            _updatingSelection = false;
+        }
+        if (_hasPendingFormatOverride) ResetPendingFormats();
+        UpdateFormatButtonStates();
+        return true;
+    }
+
+    private int OrderedListMarkerCaretTarget(int caret) {
+        var marker = _model.Spans
+            .Where(span => span.Kind == MarkdownVisualKind.OrderedListMarker &&
+                caret >= span.Start && caret < span.End)
+            .Select(span => (MarkdownVisualSpan?)span)
+            .FirstOrDefault();
+        return marker is { } span ? span.End : caret;
+    }
+
+    private bool TryMoveCaretBeforeAtomicListPrefix() {
+        if (_editor.SelectionLength != 0) return false;
+
+        var caret = _editor.CaretOffset;
+        if (!_model.Spans.Any(span =>
+                span.Kind is MarkdownVisualKind.Task or MarkdownVisualKind.OrderedListMarker &&
+                span.End == caret))
+            return false;
+
+        ResetPendingFormats();
+        var line = _editor.Document.GetLineByOffset(caret);
+        if (line.PreviousLine is not { } previousLine) return true;
+
+        _editor.CaretOffset = previousLine.EndOffset;
+        return true;
+    }
+
+    private bool RedirectCaretFromTable() {
+        if (_editor.SelectionLength != 0) return false;
+
+        var caret = _editor.CaretOffset;
+        var target = TableCaretTarget(caret);
+        if (target == caret) return false;
+
+        _updatingSelection = true;
+        try {
+            _editor.SelectionStart = target;
+            _editor.SelectionLength = 0;
+        }
+        finally {
+            _updatingSelection = false;
+        }
+        if (_hasPendingFormatOverride) ResetPendingFormats();
+        UpdateFormatButtonStates();
+        return true;
+    }
+
+    private int TableCaretTarget(int caret) {
+        var table = _model.Spans
+            .Where(span => span.Kind == MarkdownVisualKind.Table && span.SourceLength > 3 &&
+                caret >= span.Start && caret <= span.End)
+            .OrderByDescending(span => span.SourceLength)
+            .Select(span => (MarkdownVisualSpan?)span)
+            .FirstOrDefault();
+        return table is { } span
+            ? Math.Min(span.End + 1, _model.VisibleText.Length)
+            : caret;
+    }
+
+    private bool RedirectCaretFromRule() {
+        if (_editor.SelectionLength != 0) return false;
+
+        var caret = _editor.CaretOffset;
+        var target = RuleCaretTarget(caret);
+        if (target == caret) return false;
+
+        _updatingSelection = true;
+        try {
+            _editor.SelectionStart = target;
+            _editor.SelectionLength = 0;
+        }
+        finally {
+            _updatingSelection = false;
+        }
+        if (_hasPendingFormatOverride) ResetPendingFormats();
+        UpdateFormatButtonStates();
+        return true;
+    }
+
+    private int RuleCaretTarget(int caret) {
+        var rule = _model.Spans
+            .Where(span => span.Kind == MarkdownVisualKind.Rule &&
+                caret >= span.Start && caret <= span.End)
+            .OrderByDescending(span => span.SourceLength)
+            .Select(span => (MarkdownVisualSpan?)span)
+            .FirstOrDefault();
+        return rule is { } span
+            ? Math.Min(span.End + 1, _model.VisibleText.Length)
+            : caret;
     }
 
     private static bool IsInlineFormat(MarkdownFormatCommand command) =>
@@ -383,7 +991,8 @@ public partial class MarkdownEditor : UserControl {
             : IsVisualFormatActive(MarkdownVisualKind.Code);
         _boldButton.Classes.Set("formatActive", bold);
         _italicButton.Classes.Set("formatActive", italic);
-        _strikeMenuItem.IsChecked = strike;
+        _strikeButton.Classes.Set("formatActive", strike);
+        _codeButton.Classes.Set("formatActive", code);
         _codeMenuItem.IsChecked = code;
     }
 
@@ -423,7 +1032,7 @@ public partial class MarkdownEditor : UserControl {
         if (TopLevel.GetTopLevel(this) is not Window owner) return;
         var value = await new MarkdownSourceDialog(Markdown).ShowDialog<string?>(owner);
         if (value == null || value == Markdown) return;
-        PushUndo(); _model.SetMarkdown(value); RefreshProjection(0, 0); NotifyChanged();
+        PushUndo(); _model.SetEditableMarkdown(value); RefreshProjection(0, 0); NotifyChanged();
     }
 
     private bool TryContinueList() {
@@ -449,8 +1058,135 @@ public partial class MarkdownEditor : UserControl {
         var match = ListItemLine().Match(Markdown[lineStart..lineEnd]);
         if (!match.Success || source != lineStart + match.Groups[4].Index) return false;
         var markerStart = lineStart + match.Groups[2].Index;
-        ReplaceSource(markerStart, lineStart + match.Groups[4].Index, string.Empty, markerStart, markerStart);
+        var markerEnd = lineStart + match.Groups[4].Index;
+        var result = Markdown[..markerStart] + Markdown[markerEnd..];
+        var nextLineStart = lineEnd - (markerEnd - markerStart) + 1;
+        result = RenumberFollowingOrderedListItems(
+            result, nextLineStart, match.Groups[1].Value, match.Groups[2].Value);
+        ApplySourceText(result, markerStart, markerStart);
         return true;
+    }
+
+    private bool TryContinueQuote() {
+        if (_editor.SelectionLength > 0) return false;
+        var trailingCaret = _editor.CaretOffset == _model.VisibleText.Length;
+
+        if (trailingCaret) {
+            var quote = _model.Spans
+                .Where(span => span.Kind == MarkdownVisualKind.Quote && span.Length > 0)
+                .OrderByDescending(span => span.Length)
+                .FirstOrDefault();
+            if (quote.SourceLength > 0) {
+                var quoteEnd = Math.Clamp(quote.SourceStart + quote.SourceLength, quote.SourceStart, Markdown.Length);
+                var suffix = Markdown[quoteEnd..].Trim('\r', '\n', ' ', '\t');
+                if (suffix.Length > 0) goto ContinueQuoteFromCaret;
+                var lastNewline = Markdown.LastIndexOf('\n', Math.Max(quote.SourceStart, quoteEnd - 1));
+                if (lastNewline == quoteEnd - 1)
+                    lastNewline = Markdown.LastIndexOf('\n', Math.Max(quote.SourceStart, lastNewline - 1));
+                var trailingLineEnd = lastNewline < quote.SourceStart ? quoteEnd : lastNewline;
+                var trailingLineStart = trailingLineEnd == quote.SourceStart
+                    ? quote.SourceStart
+                    : Markdown.LastIndexOf('\n', trailingLineEnd - 1) + 1;
+                var trailingMatch = QuoteItemLine().Match(Markdown[trailingLineStart..trailingLineEnd]);
+                if (trailingMatch.Success) {
+                    if (string.IsNullOrWhiteSpace(trailingMatch.Groups[2].Value)) {
+                        var removalEnd = trailingLineEnd;
+                        if (trailingLineEnd < Markdown.Length && Markdown[trailingLineEnd] == '\n') removalEnd++;
+                        ReplaceSource(trailingLineStart, removalEnd, string.Empty, trailingLineStart, trailingLineStart);
+                    }
+                    else {
+                        var trailingPrefix = trailingMatch.Groups[1].Value + "> ";
+                        ReplaceSource(trailingLineEnd, trailingLineEnd, "\n" + trailingPrefix, trailingLineEnd + trailingPrefix.Length + 1, trailingLineEnd + trailingPrefix.Length + 1);
+                    }
+                    return true;
+                }
+            }
+        }
+
+    ContinueQuoteFromCaret:
+        var source = _model.SourceOffsetFromVisible(_editor.CaretOffset, trailingAffinity: false);
+        var lineStart = source == 0 ? 0 : Markdown.LastIndexOf('\n', source - 1) + 1;
+        var lineEnd = Markdown.IndexOf('\n', source); if (lineEnd < 0) lineEnd = Markdown.Length;
+        var match = QuoteItemLine().Match(Markdown[lineStart..lineEnd]);
+        if (!match.Success) return false;
+
+        if (string.IsNullOrWhiteSpace(match.Groups[2].Value)) {
+            var removalEnd = lineEnd;
+            if (lineEnd + 1 < Markdown.Length &&
+                Markdown[lineEnd] == '\n' && Markdown[lineEnd + 1] == '\n')
+                removalEnd++;
+            ReplaceSource(lineStart, removalEnd, string.Empty, lineStart, lineStart);
+            return true;
+        }
+
+        var prefix = match.Groups[1].Value + "> ";
+        if (trailingCaret) {
+            var insertionPoint = _model.SourceOffsetFromVisible(
+                _editor.CaretOffset, trailingAffinity: true);
+            ReplaceSource(
+                insertionPoint, insertionPoint, prefix + "\n",
+                insertionPoint + prefix.Length, insertionPoint + prefix.Length);
+            return true;
+        }
+        ReplaceSource(source, source, "\n" + prefix, source + prefix.Length + 1, source + prefix.Length + 1);
+        return true;
+    }
+
+    private static string RenumberFollowingOrderedListItems(
+        string markdown, int start, string indentation, string removedMarker) {
+        var markerMatch = Regex.Match(removedMarker, @"^(\d+)([.)])$");
+        if (!markerMatch.Success || !int.TryParse(markerMatch.Groups[1].Value, out var removedNumber))
+            return markdown;
+
+        var delimiter = markerMatch.Groups[2].Value;
+        var expectedNumber = removedNumber + 1;
+        var replacementNumber = removedNumber;
+        var replacements = new List<(int Start, int Length, string Text)>();
+        var lineStart = Math.Clamp(start, 0, markdown.Length);
+        while (lineStart < markdown.Length) {
+            var lineEnd = markdown.IndexOf('\n', lineStart);
+            if (lineEnd < 0) lineEnd = markdown.Length;
+            var rawLine = markdown[lineStart..lineEnd];
+            if (string.IsNullOrWhiteSpace(rawLine)) break;
+            var match = ListItemLine().Match(markdown[lineStart..lineEnd]);
+            if (!match.Success) {
+                var leadingWhitespace = rawLine.Length - rawLine.TrimStart(' ', '\t').Length;
+                if (leadingWhitespace > indentation.Length) {
+                    lineStart = lineEnd + 1;
+                    continue;
+                }
+                break;
+            }
+
+            var candidateIndentation = match.Groups[1].Value;
+            if (candidateIndentation.Length > indentation.Length &&
+                candidateIndentation.StartsWith(indentation, StringComparison.Ordinal)) {
+                lineStart = lineEnd + 1;
+                continue;
+            }
+            if (candidateIndentation != indentation) break;
+
+            var followingMatch = Regex.Match(match.Groups[2].Value, @"^(\d+)([.)])$");
+            if (!followingMatch.Success || followingMatch.Groups[2].Value != delimiter ||
+                !int.TryParse(followingMatch.Groups[1].Value, out var number) || number != expectedNumber)
+                break;
+
+            replacements.Add((
+                lineStart + match.Groups[2].Index,
+                match.Groups[2].Length,
+                replacementNumber + delimiter));
+            expectedNumber++;
+            replacementNumber++;
+            lineStart = lineEnd + 1;
+        }
+
+        if (replacements.Count == 0) return markdown;
+        var output = new System.Text.StringBuilder(markdown);
+        foreach (var replacement in replacements.OrderByDescending(candidate => candidate.Start)) {
+            output.Remove(replacement.Start, replacement.Length);
+            output.Insert(replacement.Start, replacement.Text);
+        }
+        return output.ToString();
     }
 
     private bool TryIndentList(bool outdent) {
@@ -482,18 +1218,80 @@ public partial class MarkdownEditor : UserControl {
         return true;
     }
 
+    private MarkdownVisualSpan? RuleBeforeEmptyTrailingLine() {
+        if (_editor.SelectionLength != 0) return null;
+        var caret = _editor.CaretOffset;
+        var line = _editor.Document.GetLineByOffset(caret);
+        if (line.Length != 0 || caret != line.Offset) return null;
+
+        return _model.Spans
+            .Where(span => span.Kind == MarkdownVisualKind.Rule && caret == span.End + 1)
+            .OrderByDescending(span => span.SourceLength)
+            .Select(span => (MarkdownVisualSpan?)span)
+            .FirstOrDefault();
+    }
+
+    private void DeleteRule(MarkdownVisualSpan rule) {
+        var start = rule.SourceStart;
+        if (start >= 2 && Markdown[start - 1] == '\n' && Markdown[start - 2] == '\n')
+            start--;
+        var end = rule.SourceStart + rule.SourceLength;
+        if (end < Markdown.Length && Markdown[end] == '\n') end++;
+        ReplaceSource(start, end, string.Empty, start, start);
+    }
+
+    private MarkdownVisualSpan? TableBeforeEmptyTrailingLine() {
+        if (_editor.SelectionLength != 0) return null;
+        var caret = _editor.CaretOffset;
+        var line = _editor.Document.GetLineByOffset(caret);
+        if (line.Length != 0 || caret != line.Offset) return null;
+
+        return _model.Spans
+            .Where(span => span.Kind == MarkdownVisualKind.Table && span.SourceLength > 3 &&
+                caret == span.End + 1)
+            .OrderByDescending(span => span.SourceLength)
+            .Select(span => (MarkdownVisualSpan?)span)
+            .FirstOrDefault();
+    }
+
+    private async Task<bool> ConfirmTableDeletionAsync() {
+        if (TableDeleteConfirmationAsync != null)
+            return await TableDeleteConfirmationAsync();
+        if (TopLevel.GetTopLevel(this) is not Window owner) return false;
+        return await new ConfirmDialog(
+            "删除表格",
+            "此空行是表格的结束位置。继续删除将删除整个表格，是否确认？")
+            .ShowDialog<bool>(owner);
+    }
+
+    private void DeleteTable(MarkdownVisualSpan table) {
+        var sourceEnd = table.SourceStart + table.SourceLength;
+        var trailingLineBreaks = 0;
+        while (sourceEnd < Markdown.Length && trailingLineBreaks < 3 && Markdown[sourceEnd] == '\n') {
+            sourceEnd++;
+            trailingLineBreaks++;
+        }
+        ReplaceSource(table.SourceStart, sourceEnd, string.Empty, table.SourceStart, table.SourceStart);
+    }
+
     private void ToggleTask(MarkdownVisualSpan span) {
         var syntax = Markdown.Substring(span.SourceStart, span.SourceLength);
         var index = syntax.IndexOf('[', StringComparison.Ordinal);
         if (index < 0 || index + 2 >= syntax.Length) return;
         var absolute = span.SourceStart + index + 1;
-        ReplaceSource(absolute, absolute + 1, char.ToLowerInvariant(Markdown[absolute]) == 'x' ? " " : "x", absolute, absolute);
+        var willBeChecked = char.ToLowerInvariant(Markdown[absolute]) != 'x';
+        _inlineGenerator.PrepareTaskAnimation(span.SourceStart, willBeChecked);
+        ReplaceSource(absolute, absolute + 1, willBeChecked ? "x" : " ", absolute, absolute);
     }
 
     private void ReplaceSource(int start, int end, string replacement, int selectionStart, int selectionEnd) {
-        PushUndo();
         var result = Markdown[..start] + replacement + Markdown[end..];
-        _model.SetMarkdown(result);
+        ApplySourceText(result, selectionStart, selectionEnd);
+    }
+
+    private void ApplySourceText(string result, int selectionStart, int selectionEnd) {
+        PushUndo();
+        _model.SetEditableMarkdown(result);
         RefreshProjection(_model.VisibleOffsetFromSource(selectionStart), _model.VisibleOffsetFromSource(selectionEnd));
         NotifyChanged();
     }
@@ -508,7 +1306,7 @@ public partial class MarkdownEditor : UserControl {
         var visibleText = _model.VisibleText;
         var selectionStart = _editor.SelectionStart;
         var selectionEnd = selectionStart + _editor.SelectionLength;
-        _model.SetMarkdown(Markdown[..table.SourceStart] + replacement + Markdown[(table.SourceStart + table.SourceLength)..]);
+        _model.SetEditableMarkdown(Markdown[..table.SourceStart] + replacement + Markdown[(table.SourceStart + table.SourceLength)..]);
 
         var latest = FindTableSpan(visibleOffset);
         if (_model.VisibleText == visibleText && latest is { } updated &&
@@ -537,10 +1335,10 @@ public partial class MarkdownEditor : UserControl {
     private EditorState CaptureState() => new(Markdown, _model.SourceOffsetFromVisible(_editor.SelectionStart), _model.SourceOffsetFromVisible(_editor.SelectionStart + _editor.SelectionLength, trailingAffinity: false));
     private void Undo() { if (_undo.Count == 0) return; _redo.Push(CaptureState()); RestoreState(_undo.Pop()); }
     private void Redo() { if (_redo.Count == 0) return; _undo.Push(CaptureState()); RestoreState(_redo.Pop()); }
-    private void RestoreState(EditorState state) { _model.SetMarkdown(state.Markdown); RefreshProjection(_model.VisibleOffsetFromSource(state.SelectionStart), _model.VisibleOffsetFromSource(state.SelectionEnd)); NotifyChanged(); }
+    private void RestoreState(EditorState state) { _model.SetEditableMarkdown(state.Markdown); RefreshProjection(_model.VisibleOffsetFromSource(state.SelectionStart), _model.VisibleOffsetFromSource(state.SelectionEnd)); NotifyChanged(); }
 
     private void LoadMarkdown(string markdown, bool clearHistory) {
-        _model.SetMarkdown(markdown);
+        _model.SetEditableMarkdown(markdown);
         if (clearHistory) { _undo.Clear(); _redo.Clear(); }
         RefreshProjection(0, 0);
     }
@@ -555,6 +1353,13 @@ public partial class MarkdownEditor : UserControl {
         var verticalOffset = _editor.VerticalOffset;
         var horizontalOffset = _editor.HorizontalOffset;
         _projectionSnapshot.Invalidate();
+        if (selectionStart == selectionEnd) {
+            selectionStart = TaskCaretTarget(selectionStart);
+            selectionStart = OrderedListMarkerCaretTarget(selectionStart);
+            selectionStart = TableCaretTarget(selectionStart);
+            selectionStart = RuleCaretTarget(selectionStart);
+            selectionEnd = selectionStart;
+        }
         _suppressTextChanged = true;
         _updatingSelection = true;
         try {
@@ -637,9 +1442,10 @@ public partial class MarkdownEditor : UserControl {
         if (_surface == null || _toolbar == null) return;
         _surface.BorderThickness = UseBorderlessChrome ? new Thickness(0) : new Thickness(1);
         _surface.CornerRadius = UseBorderlessChrome ? new CornerRadius(0) : new CornerRadius(10);
-        _toolbar.BorderThickness = UseBorderlessChrome ? new Thickness(0) : new Thickness(0, 0, 0, 1);
+        _toolbar.BorderThickness = new Thickness(0, 0, 0, 1);
         _toolbar.CornerRadius = UseBorderlessChrome ? new CornerRadius(0) : new CornerRadius(9, 9, 0, 0);
         _surface.Classes.Set("borderless", UseBorderlessChrome);
+        _toolbar.Classes.Set("borderless", UseBorderlessChrome);
         if (UseBorderlessChrome) _surface.ClearValue(Border.BackgroundProperty);
         else UpdateBorderBlending();
     }
@@ -649,7 +1455,41 @@ public partial class MarkdownEditor : UserControl {
     [GeneratedRegex(@"^([ \t]*)([-+*]|\d+[.)])[ \t]+(\[[ xX]\][ \t]+)?(.*)$")]
     private static partial Regex ListItemLine();
 
+    [GeneratedRegex(@"^([ \t]*)>[ \t]?(.*)$")]
+    private static partial Regex QuoteItemLine();
+
     private readonly record struct EditorState(string Markdown, int SelectionStart, int SelectionEnd);
+}
+
+internal sealed class MarkdownEditorImeClient : TextInputMethodClient {
+    private readonly MarkdownEditor _owner;
+
+    public MarkdownEditorImeClient(MarkdownEditor owner) => _owner = owner;
+    public bool IsComposing { get; private set; }
+
+    public override Visual TextViewVisual => _owner.EditorTextArea;
+    public override bool SupportsPreedit => true;
+    public override bool SupportsSurroundingText => true;
+    public override string SurroundingText => _owner.ImeSurroundingText;
+    public override Rect CursorRectangle => _owner.ImeCursorRectangle;
+    public override TextSelection Selection { get => _owner.ImeSelection; set => _owner.SetImeSelection(value); }
+    public override void SetPreeditText(string? preeditText) => SetPreeditText(preeditText, null);
+    public override void SetPreeditText(string? preeditText, int? cursorPos) {
+        IsComposing = !string.IsNullOrEmpty(preeditText);
+        _owner.SetImePreeditText(preeditText, cursorPos);
+    }
+    public void ClearPreedit() {
+        IsComposing = false;
+        _owner.SetImePreeditText(null, null);
+    }
+    public void NotifyCaretChanged() {
+        RaiseCursorRectangleChanged();
+        RaiseSurroundingTextChanged();
+        RaiseSelectionChanged();
+    }
+    public void NotifySelectionChanged() => RaiseSelectionChanged();
+    public void NotifyCursorRectangleChanged() => RaiseCursorRectangleChanged();
+    public void NotifyTextChanged() => RaiseSurroundingTextChanged();
 }
 
 internal sealed class MarkdownProjectionSnapshot {
@@ -680,9 +1520,387 @@ internal sealed class MarkdownProjectionSnapshot {
         model.ProjectionVersion == _modelVersion;
 }
 
+internal static class MarkdownQuoteSpacing {
+    public const double HorizontalPadding = 10;
+    public const double VerticalPadding = 5;
+    public const double VerticalMargin = 4;
+}
+
+internal sealed class MarkdownQuoteRenderer(
+    MarkdownDocumentModel model,
+    MarkdownProjectionSnapshot projectionSnapshot,
+    IBrush background,
+    IBrush border) : IBackgroundRenderer {
+    private const double CornerRadius = 6;
+    private readonly Pen _borderPen = new(border, 1);
+
+    public KnownLayer Layer => KnownLayer.Background;
+
+    public void Draw(TextView textView, DrawingContext drawingContext) {
+        var document = textView.Document;
+        if (document == null || !textView.VisualLinesValid ||
+            !projectionSnapshot.IsCurrent(document, model)) return;
+
+        foreach (var span in model.Spans.Where(span => span.Kind == MarkdownVisualKind.Quote)) {
+            var startOffset = Math.Clamp(span.Start, 0, document.TextLength);
+            var endOffset = Math.Clamp(span.End, startOffset, document.TextLength);
+            var firstLine = document.GetLineByOffset(startOffset).LineNumber;
+            var lastLine = document.GetLineByOffset(endOffset).LineNumber;
+            var visibleLines = textView.VisualLines.Where(line =>
+                line.LastDocumentLine.LineNumber >= firstLine &&
+                line.FirstDocumentLine.LineNumber <= lastLine).ToArray();
+            if (visibleLines.Length == 0) continue;
+
+            var includesFirstLine = visibleLines.Any(line =>
+                line.FirstDocumentLine.LineNumber <= firstLine &&
+                line.LastDocumentLine.LineNumber >= firstLine);
+            var includesLastLine = visibleLines.Any(line =>
+                line.FirstDocumentLine.LineNumber <= lastLine &&
+                line.LastDocumentLine.LineNumber >= lastLine);
+            var top = visibleLines.Min(line => line.VisualTop) - textView.ScrollOffset.Y +
+                (includesFirstLine ? MarkdownQuoteSpacing.VerticalMargin : 0);
+            var bottom = visibleLines.Max(line => line.VisualTop + line.Height) -
+                textView.ScrollOffset.Y -
+                (includesLastLine ? MarkdownQuoteSpacing.VerticalMargin : 0);
+            var width = textView.Bounds.Width;
+            if (bottom <= top || width <= 0) continue;
+
+            var block = new Rect(0, top, width, bottom - top);
+            drawingContext.DrawRectangle(
+                background, _borderPen, block, CornerRadius, CornerRadius, default);
+        }
+    }
+}
+
+internal static class MarkdownInlineCodeStyle {
+    internal const double HorizontalPadding = 3;
+    internal const double VerticalPadding = 1;
+    internal const double CornerRadius = 3;
+
+    internal static bool IsInlineCode(MarkdownDocumentModel model, MarkdownVisualSpan span) {
+        var sourceStart = Math.Clamp(span.SourceStart, 0, model.Markdown.Length);
+        var sourceEnd = Math.Clamp(span.SourceStart + span.SourceLength, sourceStart, model.Markdown.Length);
+        if (sourceStart > 0 && sourceEnd < model.Markdown.Length &&
+            model.Markdown[sourceStart - 1] == '`' && model.Markdown[sourceEnd] == '`') return true;
+
+        const string openTag = "<code>";
+        const string closeTag = "</code>";
+        return sourceStart >= openTag.Length && sourceEnd + closeTag.Length <= model.Markdown.Length &&
+               model.Markdown.AsSpan(sourceStart - openTag.Length, openTag.Length)
+                   .Equals(openTag, StringComparison.OrdinalIgnoreCase) &&
+               model.Markdown.AsSpan(sourceEnd, closeTag.Length)
+                   .Equals(closeTag, StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+internal sealed class MarkdownInlineCodeRenderer(
+    MarkdownDocumentModel model,
+    MarkdownProjectionSnapshot projectionSnapshot,
+    IBrush background) : IBackgroundRenderer {
+    public KnownLayer Layer => KnownLayer.Background;
+
+    public void Draw(TextView textView, DrawingContext drawingContext) {
+        var document = textView.Document;
+        if (document == null || !textView.VisualLinesValid ||
+            !projectionSnapshot.IsCurrent(document, model)) return;
+
+        foreach (var span in model.Spans.Where(span =>
+                     span.Kind == MarkdownVisualKind.Code &&
+                     MarkdownInlineCodeStyle.IsInlineCode(model, span))) {
+            var start = Math.Clamp(span.Start, 0, document.TextLength);
+            var segment = new SimpleSegment(
+                start,
+                Math.Clamp(span.Length, 0, document.TextLength - start));
+            if (segment.Length <= 0) continue;
+
+            foreach (var rect in BackgroundGeometryBuilder.GetRectsForSegment(
+                         textView, segment, extendToFullWidthAtLineEnd: false)) {
+                var padded = new Rect(
+                    rect.Left - MarkdownInlineCodeStyle.HorizontalPadding,
+                    rect.Top - MarkdownInlineCodeStyle.VerticalPadding,
+                    rect.Width + MarkdownInlineCodeStyle.HorizontalPadding * 2,
+                    rect.Height + MarkdownInlineCodeStyle.VerticalPadding * 2);
+                drawingContext.DrawRectangle(
+                    background,
+                    null,
+                    padded,
+                    MarkdownInlineCodeStyle.CornerRadius,
+                    MarkdownInlineCodeStyle.CornerRadius,
+                    default);
+            }
+        }
+    }
+}
+
+internal sealed class MarkdownInlineCodePaddingGenerator(
+    MarkdownDocumentModel model,
+    MarkdownProjectionSnapshot projectionSnapshot) : VisualLineElementGenerator {
+    public override int GetFirstInterestedOffset(int startOffset) {
+        var document = CurrentContext.Document;
+        if (!projectionSnapshot.IsCurrent(document, model)) return -1;
+
+        var line = CurrentContext.VisualLine.FirstDocumentLine;
+        var interestedOffset = int.MaxValue;
+        foreach (var span in model.Spans.Where(span =>
+                     span.Kind == MarkdownVisualKind.Code && span.Length > 0 &&
+                     MarkdownInlineCodeStyle.IsInlineCode(model, span))) {
+            if (span.Start >= startOffset && span.Start <= line.EndOffset)
+                interestedOffset = Math.Min(interestedOffset, span.Start);
+            if (span.End >= startOffset && span.End <= line.EndOffset)
+                interestedOffset = Math.Min(interestedOffset, span.End);
+        }
+        return interestedOffset == int.MaxValue ? -1 : interestedOffset;
+    }
+
+    public override VisualLineElement? ConstructElement(int offset) {
+        var document = CurrentContext.Document;
+        if (!projectionSnapshot.IsCurrent(document, model)) return null;
+
+        var isLeading = false;
+        var isBoundary = false;
+        foreach (var span in model.Spans.Where(span =>
+                     span.Kind == MarkdownVisualKind.Code && span.Length > 0 &&
+                     MarkdownInlineCodeStyle.IsInlineCode(model, span))) {
+            if (span.Start == offset) {
+                isLeading = true;
+                isBoundary = true;
+            }
+            if (span.End == offset) isBoundary = true;
+        }
+        if (!isBoundary) return null;
+
+        var spacer = new Border {
+            Width = MarkdownInlineCodeStyle.HorizontalPadding,
+            Height = 1,
+            IsHitTestVisible = false,
+            Focusable = false,
+        };
+        TextBlock.SetBaselineOffset(spacer, 1);
+        return new InlineCodePaddingElement(spacer, isLeading);
+    }
+}
+
+internal sealed class InlineCodePaddingElement(
+    Control spacer,
+    bool isLeading) : InlineObjectElement(0, spacer) {
+    public override bool HandlesLineBorders => true;
+
+    public override int GetVisualColumn(int relativeTextOffset) =>
+        isLeading ? VisualColumn + VisualLength : VisualColumn;
+
+    public override int GetNextCaretPosition(
+        int visualColumn,
+        AvaloniaEdit.Document.LogicalDirection direction,
+        CaretPositioningMode mode) {
+        var caret = isLeading ? VisualColumn + VisualLength : VisualColumn;
+        if (direction == AvaloniaEdit.Document.LogicalDirection.Forward && visualColumn < caret)
+            return caret;
+        if (direction == AvaloniaEdit.Document.LogicalDirection.Backward && visualColumn > caret)
+            return caret;
+        return -1;
+    }
+
+    public override bool IsWhitespace(int visualColumn) => true;
+}
+
+internal sealed class MarkdownSelectionRenderer(
+    TextArea textArea,
+    IBrush defaultSelection,
+    IBrush quoteSelection) : IBackgroundRenderer {
+    public KnownLayer Layer => KnownLayer.Selection;
+
+    public void Draw(TextView textView, DrawingContext drawingContext) {
+        var document = textView.Document;
+        if (document == null || !textView.VisualLinesValid) return;
+
+        var selectionBorder = textArea.SelectionBorder;
+        var normalGeometry = CreateGeometryBuilder(
+            textArea, selectionBorder, textArea.SelectionCornerRadius);
+        var quoteGeometry = CreateGeometryBuilder(
+            textArea, selectionBorder, textArea.SelectionCornerRadius);
+        var quoteBridgeGeometry = CreateGeometryBuilder(
+            textArea, selectionBorder: null, cornerRadius: 0);
+        var quoteRects = new List<Rect>();
+        foreach (var segment in textArea.Selection.Segments) {
+            foreach (var rect in BackgroundGeometryBuilder.GetRectsForSegment(
+                         textView, segment, textArea.Selection.EnableVirtualSpace)) {
+                if (TryGetQuoteContentBounds(
+                        textView, rect.Y, out var contentLeft, out var contentTop, out var contentHeight)) {
+                    var selectionLeft = Math.Max(rect.Left, contentLeft);
+                    if (rect.Right > selectionLeft)
+                        quoteRects.Add(new Rect(
+                            selectionLeft, contentTop, rect.Right - selectionLeft, contentHeight));
+                }
+                else normalGeometry.AddRectangle(textView, rect);
+            }
+        }
+
+        foreach (var rect in quoteRects)
+            quoteGeometry.AddRectangle(textView, rect);
+        AddQuoteSelectionBridges(
+            textView, quoteBridgeGeometry, quoteRects, textArea.SelectionCornerRadius);
+
+        DrawGeometry(drawingContext, normalGeometry, defaultSelection, selectionBorder);
+        DrawGeometry(drawingContext, quoteGeometry, quoteSelection, selectionBorder);
+        DrawGeometry(drawingContext, quoteBridgeGeometry, quoteSelection, border: null);
+    }
+
+    private static BackgroundGeometryBuilder CreateGeometryBuilder(
+        TextArea textArea,
+        Pen? selectionBorder,
+        double cornerRadius) =>
+        new() {
+            AlignToWholePixels = true,
+            BorderThickness = selectionBorder?.Thickness ?? 0,
+            ExtendToFullWidthAtLineEnd = textArea.Selection.EnableVirtualSpace,
+            CornerRadius = cornerRadius,
+        };
+
+    private static void DrawGeometry(
+        DrawingContext drawingContext,
+        BackgroundGeometryBuilder builder,
+        IBrush brush,
+        Pen? border) {
+        var geometry = builder.CreateGeometry();
+        if (geometry != null) drawingContext.DrawGeometry(brush, border, geometry);
+    }
+
+    private static void AddQuoteSelectionBridges(
+        TextView textView,
+        BackgroundGeometryBuilder geometry,
+        IReadOnlyList<Rect> rects,
+        double cornerRadius) {
+        if (cornerRadius <= 0) return;
+        for (var firstIndex = 0; firstIndex < rects.Count; firstIndex++) {
+            var first = rects[firstIndex];
+            for (var secondIndex = firstIndex + 1; secondIndex < rects.Count; secondIndex++) {
+                var second = rects[secondIndex];
+                var boundary = Math.Abs(first.Bottom - second.Top) < 0.01
+                    ? first.Bottom
+                    : Math.Abs(second.Bottom - first.Top) < 0.01
+                        ? second.Bottom
+                        : double.NaN;
+                if (!double.IsFinite(boundary)) continue;
+
+                var left = Math.Max(first.Left, second.Left);
+                var right = Math.Min(first.Right, second.Right);
+                if (right <= left) continue;
+                geometry.AddRectangle(textView, new Rect(
+                    left,
+                    boundary - cornerRadius,
+                    right - left,
+                    cornerRadius * 2));
+            }
+        }
+    }
+
+    private static bool TryGetQuoteContentBounds(
+        TextView textView,
+        double selectionTop,
+        out double contentLeft,
+        out double contentTop,
+        out double contentHeight) {
+        foreach (var visualLine in textView.VisualLines) {
+            if (!visualLine.Elements.OfType<QuotePaddingElement>().Any()) continue;
+            foreach (var textLine in visualLine.TextLines) {
+                var textTop = visualLine.GetTextLineVisualYPosition(
+                    textLine, VisualYPosition.TextTop) - textView.ScrollOffset.Y;
+                if (Math.Abs(textTop - selectionTop) >= 0.01) continue;
+
+                var lineTop = visualLine.GetTextLineVisualYPosition(
+                    textLine, VisualYPosition.LineTop) - textView.ScrollOffset.Y;
+                if (textLine is EmbeddedControlHeightTextLine adjusted) {
+                    contentTop = lineTop + adjusted.TopSpacing;
+                    contentHeight = adjusted.ContentHeight;
+                }
+                else {
+                    contentTop = lineTop;
+                    contentHeight = textLine.Height;
+                }
+                contentLeft = MarkdownQuoteSpacing.HorizontalPadding - textView.ScrollOffset.X;
+                return true;
+            }
+        }
+        contentLeft = 0;
+        contentTop = 0;
+        contentHeight = 0;
+        return false;
+    }
+}
+
+internal sealed class MarkdownQuotePaddingGenerator(
+    MarkdownDocumentModel model,
+    MarkdownProjectionSnapshot projectionSnapshot) : VisualLineElementGenerator {
+    public override int GetFirstInterestedOffset(int startOffset) {
+        var document = CurrentContext.Document;
+        if (!projectionSnapshot.IsCurrent(document, model)) return -1;
+        var line = CurrentContext.VisualLine.FirstDocumentLine;
+        if (startOffset > line.Offset || QuoteForLine(line.Offset, line.EndOffset) is null) return -1;
+        return line.Offset;
+    }
+
+    public override VisualLineElement? ConstructElement(int offset) {
+        var document = CurrentContext.Document;
+        if (!projectionSnapshot.IsCurrent(document, model)) return null;
+        var line = CurrentContext.VisualLine.FirstDocumentLine;
+        var quote = QuoteForLine(line.Offset, line.EndOffset);
+        if (offset != line.Offset || quote is null) return null;
+
+        var spacer = new Border {
+            Width = MarkdownQuoteSpacing.HorizontalPadding,
+            Height = 1,
+            IsHitTestVisible = false,
+            Focusable = false,
+        };
+        TextBlock.SetBaselineOffset(spacer, 1);
+        return new QuotePaddingElement(
+            spacer,
+            line.Offset <= quote.Value.Start,
+            line.EndOffset >= quote.Value.End);
+    }
+
+    private MarkdownVisualSpan? QuoteForLine(int lineStart, int lineEnd) => model.Spans
+        .Where(span => span.Kind == MarkdownVisualKind.Quote &&
+            span.Start <= lineEnd && span.End >= lineStart)
+        .OrderByDescending(span => span.Length)
+        .Select(span => (MarkdownVisualSpan?)span)
+        .FirstOrDefault();
+}
+
+internal sealed class QuotePaddingElement(
+    Control spacer,
+    bool hasTopSpacing,
+    bool hasBottomSpacing) : InlineObjectElement(0, spacer) {
+    internal double TopSpacing => hasTopSpacing
+        ? MarkdownQuoteSpacing.VerticalMargin + MarkdownQuoteSpacing.VerticalPadding
+        : 0;
+    internal double BottomSpacing => hasBottomSpacing
+        ? MarkdownQuoteSpacing.VerticalMargin + MarkdownQuoteSpacing.VerticalPadding
+        : 0;
+
+    public override bool HandlesLineBorders => true;
+
+    public override int GetVisualColumn(int relativeTextOffset) => VisualColumn + VisualLength;
+
+    public override int GetNextCaretPosition(
+        int visualColumn,
+        AvaloniaEdit.Document.LogicalDirection direction,
+        CaretPositioningMode mode) {
+        var end = VisualColumn + VisualLength;
+        if (direction == AvaloniaEdit.Document.LogicalDirection.Forward && visualColumn < end)
+            return end;
+        if (direction == AvaloniaEdit.Document.LogicalDirection.Backward && visualColumn > end)
+            return end;
+        return -1;
+    }
+
+    public override bool IsWhitespace(int visualColumn) => true;
+}
+
 internal sealed class MarkdownColorizer(
     MarkdownDocumentModel model,
-    MarkdownProjectionSnapshot projectionSnapshot) : DocumentColorizingTransformer {
+    MarkdownProjectionSnapshot projectionSnapshot,
+    IBrush quoteForeground) : DocumentColorizingTransformer {
     protected override void ColorizeLine(DocumentLine line) {
         var document = CurrentContext.Document;
         if (!projectionSnapshot.IsCurrent(document, model)) return;
@@ -695,6 +1913,7 @@ internal sealed class MarkdownColorizer(
                     case MarkdownVisualKind.Heading1: element.TextRunProperties.SetFontRenderingEmSize(22); element.TextRunProperties.SetTypeface(new Typeface("Microsoft YaHei UI", FontStyle.Normal, FontWeight.SemiBold)); break;
                     case MarkdownVisualKind.Heading2: element.TextRunProperties.SetFontRenderingEmSize(18); element.TextRunProperties.SetTypeface(new Typeface("Microsoft YaHei UI", FontStyle.Normal, FontWeight.SemiBold)); break;
                     case MarkdownVisualKind.Heading3: element.TextRunProperties.SetFontRenderingEmSize(16); element.TextRunProperties.SetTypeface(new Typeface("Microsoft YaHei UI", FontStyle.Normal, FontWeight.SemiBold)); break;
+                    case MarkdownVisualKind.Heading4: element.TextRunProperties.SetFontRenderingEmSize(14); element.TextRunProperties.SetTypeface(new Typeface("Microsoft YaHei UI", FontStyle.Normal, FontWeight.SemiBold)); break;
                     case MarkdownVisualKind.Bold:
                         element.TextRunProperties.SetTypeface(new Typeface("Microsoft YaHei UI",
                             IsCoveredBy(MarkdownVisualKind.Italic, start, end) ? FontStyle.Italic : FontStyle.Normal,
@@ -704,14 +1923,14 @@ internal sealed class MarkdownColorizer(
                         element.TextRunProperties.SetTypeface(new Typeface("Microsoft YaHei UI", FontStyle.Italic,
                             IsCoveredBy(MarkdownVisualKind.Bold, start, end) ? FontWeight.Bold : FontWeight.Normal));
                         break;
-                    case MarkdownVisualKind.Code: element.TextRunProperties.SetTypeface(new Typeface("Cascadia Mono, Consolas")); element.TextRunProperties.SetBackgroundBrush(Brushes.Linen); break;
-                    case MarkdownVisualKind.Link: element.TextRunProperties.SetForegroundBrush(Brushes.Sienna); element.TextRunProperties.SetTextDecorations(TextDecorations.Underline); break;
-                    case MarkdownVisualKind.Quote: element.TextRunProperties.SetForegroundBrush(Brushes.DimGray); element.TextRunProperties.SetBackgroundBrush(Brushes.Linen); break;
+                    case MarkdownVisualKind.Code: element.TextRunProperties.SetTypeface(new Typeface("Cascadia Mono, Consolas")); element.TextRunProperties.SetBackgroundBrush((IBrush)Application.Current!.Resources["AccentSubtleBrush"]!); break;
+                    case MarkdownVisualKind.Link: element.TextRunProperties.SetForegroundBrush((IBrush)Application.Current!.Resources["AccentPrimaryBrush"]!); element.TextRunProperties.SetTextDecorations(TextDecorations.Underline); break;
+                    case MarkdownVisualKind.Quote: element.TextRunProperties.SetForegroundBrush(quoteForeground); break;
                     case MarkdownVisualKind.Strike: element.TextRunProperties.SetTextDecorations(TextDecorations.Strikethrough); break;
                     case MarkdownVisualKind.Underline: element.TextRunProperties.SetTextDecorations(TextDecorations.Underline); break;
-                    case MarkdownVisualKind.Mark: element.TextRunProperties.SetBackgroundBrush(Brushes.PaleGoldenrod); break;
-                    case MarkdownVisualKind.Image: element.TextRunProperties.SetForegroundBrush(Brushes.Sienna); element.TextRunProperties.SetBackgroundBrush(Brushes.Linen); break;
-                    case MarkdownVisualKind.Rule: element.TextRunProperties.SetForegroundBrush(Brushes.Gray); break;
+                    case MarkdownVisualKind.Mark: element.TextRunProperties.SetBackgroundBrush((IBrush)Application.Current!.Resources["AccentMutedBrush"]!); break;
+                    case MarkdownVisualKind.Image: element.TextRunProperties.SetForegroundBrush((IBrush)Application.Current!.Resources["AccentPrimaryBrush"]!); element.TextRunProperties.SetBackgroundBrush((IBrush)Application.Current.Resources["AccentSubtleBrush"]!); break;
+                    case MarkdownVisualKind.Rule: element.TextRunProperties.SetForegroundBrush((IBrush)Application.Current!.Resources["BorderEmphasisBrush"]!); break;
                     case MarkdownVisualKind.Table: element.TextRunProperties.SetTypeface(new Typeface("Cascadia Mono, Consolas")); break;
                 }
             });
@@ -727,6 +1946,7 @@ internal sealed class MarkdownInlineGenerator(
     MarkdownProjectionSnapshot projectionSnapshot,
     string assetRoot,
     TextView textView,
+    ControlTheme? taskCheckBoxTheme,
     Action<MarkdownVisualSpan> toggleTask,
     Action<int> moveCaret,
     Action<int, string, bool> updateTable) : VisualLineElementGenerator, IDisposable {
@@ -755,7 +1975,6 @@ internal sealed class MarkdownInlineGenerator(
     private static readonly Thickness ImagePadding = new(6);
     private static readonly Thickness ImageBorderThickness = new(1);
     private const double TrailingCaretWidth = 24;
-    private const double TableTrailingCaretWidth = 1;
     // Keep the caret after a full-width rule on the same visual line instead of wrapping to the left.
     private const double RuleTrailingCaretWidth = 1;
     private readonly Dictionary<string, ImageCacheEntry> _imageCache = new(StringComparer.Ordinal);
@@ -771,12 +1990,19 @@ internal sealed class MarkdownInlineGenerator(
     private bool _embeddedHeightCorrectionQueued;
     private double _requestedVerticalOffset = double.NaN;
     private double _lastImageLayoutWidth = double.NaN;
+    private int _pendingAnimatedTaskSourceStart = -1;
+    private bool _pendingAnimatedTaskChecked;
 
     internal int ImageLoadRequestCount { get; private set; }
     internal int SuccessfulImageLoadCount =>
         _imageCache.Values.Count(entry => entry.Result?.Bitmap != null);
     internal int FailedImageLoadCount =>
         _imageCache.Values.Count(entry => entry.Result?.Error != null);
+
+    internal void PrepareTaskAnimation(int sourceStart, bool isChecked) {
+        _pendingAnimatedTaskSourceStart = sourceStart;
+        _pendingAnimatedTaskChecked = isChecked;
+    }
 
     public override int GetFirstInterestedOffset(int startOffset) {
         if (!ProjectionMatchesDocument()) return -1;
@@ -817,13 +2043,25 @@ internal sealed class MarkdownInlineGenerator(
 
     private Control CreateTask(MarkdownVisualSpan span) {
         var source = model.Markdown.Substring(span.SourceStart, span.SourceLength);
+        var isChecked = source.Contains("[x]", StringComparison.OrdinalIgnoreCase);
+        var animateStateChange = span.SourceStart == _pendingAnimatedTaskSourceStart &&
+            isChecked == _pendingAnimatedTaskChecked;
         var check = new CheckBox {
-            IsChecked = source.Contains("[x]", StringComparison.OrdinalIgnoreCase),
+            IsChecked = animateStateChange ? !isChecked : isChecked,
+            Theme = taskCheckBoxTheme,
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-            MinWidth = 24, MinHeight = 24, Padding = new Thickness(2), Cursor = new Cursor(StandardCursorType.Hand),
+            Width = 16, Height = 16, MinWidth = 16, MinHeight = 16,
+            Margin = new Thickness(0, 0, 2, 0), Padding = new Thickness(0),
+            Cursor = new Cursor(StandardCursorType.Hand),
         };
+        TextBlock.SetBaselineOffset(check, textView.DefaultBaseline);
         check.Click += (_, _) => toggleTask(span);
         AutomationProperties.SetName(check, "任务完成状态");
+        if (animateStateChange) {
+            // Projection redraw replaces the inline control, so seed its previous state first.
+            _pendingAnimatedTaskSourceStart = -1;
+            Dispatcher.UIThread.Post(() => check.IsChecked = isChecked, DispatcherPriority.Loaded);
+        }
         return check;
     }
 
@@ -833,14 +2071,14 @@ internal sealed class MarkdownInlineGenerator(
             Background = Brushes.Transparent,
             Child = new Border {
                 Height = 1,
-                Background = Brushes.Gray,
+                Background = (IBrush)Application.Current!.Resources["BorderEmphasisBrush"]!,
                 IsHitTestVisible = false,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
             },
         };
         rule.Classes.Add("MarkdownRule");
         rule.PointerPressed += (_, e) => {
-            moveCaret(span.End);
+            moveCaret(span.End + 1);
             e.Handled = true;
         };
         ResizeRule(rule);
@@ -879,7 +2117,7 @@ internal sealed class MarkdownInlineGenerator(
     }
 
     private void ResizeTable(MarkdownTableControl table) {
-        var availableOuterWidth = Math.Max(1, textView.Bounds.Width - TableTrailingCaretWidth);
+        var availableOuterWidth = Math.Max(1, textView.Bounds.Width);
         table.UpdateAvailableWidth(availableOuterWidth);
         table.Measure(new Size(availableOuterWidth, double.PositiveInfinity));
     }
@@ -897,9 +2135,15 @@ internal sealed class MarkdownInlineGenerator(
         var host = new Border {
             MinHeight = 54,
             Margin = ImageMargin, Padding = ImagePadding, CornerRadius = new CornerRadius(6),
-            BorderThickness = ImageBorderThickness, BorderBrush = Brushes.LightGray, Background = Brushes.Linen,
+            BorderThickness = ImageBorderThickness,
+            BorderBrush = (IBrush)Application.Current!.Resources["BorderDefaultBrush"]!,
+            Background = (IBrush)Application.Current.Resources["SurfaceHoverBrush"]!,
         };
-        var status = new SelectableTextBlock { Text = $"正在加载图片：{alt}", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.Sienna };
+        var status = new SelectableTextBlock {
+            Text = $"正在加载图片：{alt}",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (IBrush)Application.Current.Resources["AccentPrimaryBrush"]!
+        };
         host.Child = status;
         var element = new ImageInlineElement(span.Length, host);
         if (!_imageCache.TryGetValue(uri, out var entry)) {
@@ -967,24 +2211,32 @@ internal sealed class MarkdownInlineGenerator(
         var changed = false;
         foreach (var visualLine in textView.VisualLines) {
             var embeddedControls = visualLine.Elements.OfType<HeightAwareInlineElement>().ToArray();
-            if (embeddedControls.Length == 0) continue;
+            var quotePadding = visualLine.Elements.OfType<QuotePaddingElement>().FirstOrDefault();
+            if (embeddedControls.Length == 0 && quotePadding is null) continue;
             var textLines = visualLine.TextLines.ToList();
             var lineChanged = false;
             for (var index = 0; index < textLines.Count; index++) {
                 var textLine = textLines[index];
+                var innerLine = textLine is EmbeddedControlHeightTextLine adjusted ? adjusted.Inner : textLine;
                 var desiredHeight = embeddedControls
                     .Where(element => textLine.TextRuns.OfType<InlineObjectRun>()
                         .Any(run => ReferenceEquals(run.Element, element.Host)))
                     .Select(element => element.DesiredLineHeight)
                     .DefaultIfEmpty(0)
                     .Max();
-                if (desiredHeight <= 0) continue;
+                var topSpacing = index == 0 ? quotePadding?.TopSpacing ?? 0 : 0;
+                var bottomSpacing = index == textLines.Count - 1
+                    ? quotePadding?.BottomSpacing ?? 0
+                    : 0;
+                if (desiredHeight <= 0 && topSpacing <= 0 && bottomSpacing <= 0) continue;
 
-                var innerLine = textLine is EmbeddedControlHeightTextLine adjusted ? adjusted.Inner : textLine;
-                var targetHeight = Math.Max(innerLine.Height, desiredHeight);
+                var contentHeight = Math.Max(innerLine.Height, desiredHeight);
                 if (textLine is EmbeddedControlHeightTextLine current &&
-                    Math.Abs(current.Height - targetHeight) < 0.01) continue;
-                textLines[index] = new EmbeddedControlHeightTextLine(innerLine, targetHeight);
+                    Math.Abs(current.ContentHeight - contentHeight) < 0.01 &&
+                    Math.Abs(current.TopSpacing - topSpacing) < 0.01 &&
+                    Math.Abs(current.BottomSpacing - bottomSpacing) < 0.01) continue;
+                textLines[index] = new EmbeddedControlHeightTextLine(
+                    innerLine, contentHeight, topSpacing, bottomSpacing);
                 lineChanged = true;
             }
             if (!lineChanged) continue;
@@ -1291,11 +2543,13 @@ internal sealed class MarkdownInlineGenerator(
 internal abstract class HeightAwareInlineElement : VisualLineElement {
     private const string CaretPlaceholder = "M";
     private readonly Border _host;
+    private readonly bool _hasTrailingCaret;
     private double _desiredLineHeight = 1;
 
-    protected HeightAwareInlineElement(int documentLength, Border host)
-        : base(visualLength: 2, documentLength: documentLength) {
+    protected HeightAwareInlineElement(int documentLength, Border host, bool hasTrailingCaret = true)
+        : base(visualLength: hasTrailingCaret ? 2 : 1, documentLength: documentLength) {
         _host = host;
+        _hasTrailingCaret = hasTrailingCaret;
     }
 
     public void SetDesiredLineHeight(double height) {
@@ -1311,7 +2565,7 @@ internal abstract class HeightAwareInlineElement : VisualLineElement {
         var runIndex = visualColumn - VisualColumn;
         if (runIndex == 0)
             return new InlineObjectRun(1, TextRunProperties, _host);
-        if (runIndex != 1)
+        if (!_hasTrailingCaret || runIndex != 1)
             throw new ArgumentOutOfRangeException(nameof(visualColumn));
         var defaultProperties = context.GlobalTextRunProperties;
         var fontSize = defaultProperties.FontRenderingEmSize;
@@ -1345,22 +2599,30 @@ internal sealed class ImageInlineElement(int documentLength, Border host)
     : HeightAwareInlineElement(documentLength, host);
 
 internal sealed class TableInlineElement(int documentLength, Border host)
-    : HeightAwareInlineElement(documentLength, host);
+    : HeightAwareInlineElement(documentLength, host, hasTrailingCaret: false);
 
-// Delegating all text behavior preserves AvaloniaEdit hit testing while exposing embedded controls' height.
-internal sealed class EmbeddedControlHeightTextLine(TextLine inner, double height) : TextLine {
+// Delegating text behavior preserves AvaloniaEdit hit testing while adding control height or block spacing.
+internal sealed class EmbeddedControlHeightTextLine(
+    TextLine inner,
+    double contentHeight,
+    double topSpacing = 0,
+    double bottomSpacing = 0) : TextLine {
     internal TextLine Inner { get; } = inner;
-    private readonly double _height = Math.Max(inner.Height, height);
+    internal double ContentHeight { get; } = Math.Max(inner.Height, contentHeight);
+    internal double TopSpacing { get; } = Math.Max(0, topSpacing);
+    internal double BottomSpacing { get; } = Math.Max(0, bottomSpacing);
+    private double TotalHeight => ContentHeight + TopSpacing + BottomSpacing;
 
     public override IReadOnlyList<TextRun> TextRuns => Inner.TextRuns;
     public override int FirstTextSourceIndex => Inner.FirstTextSourceIndex;
     public override int Length => Inner.Length;
     public override TextLineBreak? TextLineBreak => Inner.TextLineBreak;
-    public override double Baseline => _height;
-    public override double Extent => Math.Max(Inner.Extent, _height);
+    public override double Baseline =>
+        TopSpacing + ContentHeight - Inner.Height + Inner.Baseline;
+    public override double Extent => Math.Max(Inner.Extent, TotalHeight);
     public override bool HasCollapsed => Inner.HasCollapsed;
     public override bool HasOverflowed => Inner.HasOverflowed;
-    public override double Height => _height;
+    public override double Height => TotalHeight;
     public override int NewLineLength => Inner.NewLineLength;
     public override double OverhangAfter => Inner.OverhangAfter;
     public override double OverhangLeading => Inner.OverhangLeading;
@@ -1371,10 +2633,13 @@ internal sealed class EmbeddedControlHeightTextLine(TextLine inner, double heigh
     public override double WidthIncludingTrailingWhitespace => Inner.WidthIncludingTrailingWhitespace;
 
     public override void Draw(DrawingContext drawingContext, Point lineOrigin) =>
-        Inner.Draw(drawingContext, new Point(lineOrigin.X, lineOrigin.Y + _height - Inner.Height));
+        Inner.Draw(drawingContext, new Point(
+            lineOrigin.X,
+            lineOrigin.Y + TopSpacing + ContentHeight - Inner.Height));
 
     public override TextLine Collapse(params TextCollapsingProperties?[] collapsingProperties) =>
-        new EmbeddedControlHeightTextLine(Inner.Collapse(collapsingProperties), _height);
+        new EmbeddedControlHeightTextLine(
+            Inner.Collapse(collapsingProperties), ContentHeight, TopSpacing, BottomSpacing);
 
     public override void Justify(JustificationProperties justificationProperties) =>
         Inner.Justify(justificationProperties);
@@ -1451,8 +2716,12 @@ internal sealed class MarkdownTableControl : Border {
         _changed = changed;
         _edgePopupCloseTimer = new DispatcherTimer { Interval = EdgePopupCloseDelay };
         _edgePopupCloseTimer.Tick += OnEdgePopupCloseTimerTick;
-        BorderBrush = Brushes.LightGray; BorderThickness = new Thickness(1); CornerRadius = new CornerRadius(6);
-        Background = Brushes.White; Padding = new Thickness(5); Margin = new Thickness(2, 5);
+        BorderBrush = ThemeBrush("BorderDefaultBrush", Brushes.LightGray);
+        BorderThickness = new Thickness(1);
+        CornerRadius = new CornerRadius(6);
+        Background = ThemeBrush("SurfacePrimaryBrush", Brushes.White);
+        Padding = new Thickness(5);
+        Margin = new Thickness(2, 5);
         var rows = Parse(markdown);
         _surface.Children.Add(_grid);
 
@@ -1558,7 +2827,7 @@ internal sealed class MarkdownTableControl : Border {
             var controls = new List<TextBox>();
             for (var column = 0; column < columns; column++) {
                 var cellLines = new Border {
-                    BorderBrush = Brushes.LightGray,
+                    BorderBrush = ThemeBrush("BorderSubtleBrush", Brushes.LightGray),
                     BorderThickness = new Thickness(
                         0,
                         0,
@@ -1626,8 +2895,20 @@ internal sealed class MarkdownTableControl : Border {
     }
 
     private void OnCellKeyDown(object? sender, KeyEventArgs e) {
-        if (e.Key != Key.Enter || e.KeyModifiers.HasFlag(KeyModifiers.Control) || sender is not TextBox box)
+        if (sender is not TextBox box || e.KeyModifiers.HasFlag(KeyModifiers.Control)) return;
+
+        if (e.Key == Key.Tab) {
+            var cells = _cells.SelectMany(row => row).ToList();
+            var index = cells.IndexOf(box);
+            var next = index + (e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? -1 : 1);
+            if (next >= 0 && next < cells.Count) {
+                e.Handled = true;
+                FocusCell(cells[next]);
+            }
             return;
+        }
+
+        if (e.Key != Key.Enter) return;
         e.Handled = true;
         MoveToCellAfter(box);
     }

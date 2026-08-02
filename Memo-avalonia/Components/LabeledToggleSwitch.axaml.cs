@@ -26,7 +26,10 @@ public partial class LabeledToggleSwitch : UserControl {
         InitializeComponent();
         GotFocus += (_, _) => SetFocused(true);
         LostFocus += (_, _) => SetFocused(false);
+        AddHandler(PointerReleasedEvent, OnPointerReleased, handledEventsToo: true);
+        PointerExited += (_, _) => SetPressed(false);
         DetachedFromVisualTree += (_, _) => {
+            SetPressed(false);
             _animation?.Cancel();
             _animation = null;
         };
@@ -82,10 +85,20 @@ public partial class LabeledToggleSwitch : UserControl {
 
     private void OnTrackPointerPressed(object? sender, PointerPressedEventArgs e) {
         if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) {
+            SetPressed(true);
             Focus();
             Value = !Value;
+            e.Handled = true;
         }
     }
+
+    private void OnPointerReleased(object? sender, PointerReleasedEventArgs e) {
+        if (e.InitialPressMouseButton != MouseButton.Left) return;
+        SetPressed(false);
+        e.Handled = true;
+    }
+
+    private void SetPressed(bool pressed) => Classes.Set("pressed", pressed);
 
     protected override void OnKeyDown(KeyEventArgs e) {
         if (e.Key == Key.Space || e.Key == Key.Enter) {

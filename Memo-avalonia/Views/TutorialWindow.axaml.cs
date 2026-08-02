@@ -42,7 +42,7 @@ public partial class TutorialWindow : Window {
     }
 
     private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e) {
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) {
+        if (TitleBarDragHelper.CanStartDrag(this, e)) {
             BeginMoveDrag(e);
         }
     }
@@ -104,11 +104,11 @@ public partial class TutorialWindow : Window {
         var lines = new System.Collections.Generic.List<string> {
             "一、Markdown 备忘录",
             "顶部是可直接排版和编辑的单框 Markdown 编辑器，支持标题、强调、删除线、有序/无序列表、任务项、引用、链接、代码、表格、分隔线与图片。",
-            "新建时按 Enter 保存，Shift+Enter 换行；工具栏可直接插入常用格式，「更多」菜单也可打开 Markdown 源码编辑器。",
+            "新建时按 Ctrl+Enter 新增，Enter 换行；工具栏可直接插入常用格式，「更多」菜单也可打开 Markdown 源码编辑器。",
             "",
             "二、所见即所得编辑",
             "单击卡片即可在顶部载入并直接编辑；便签正文始终可编辑，停止输入 500ms 后自动保存。",
-            "Ctrl+Enter 立即保存且不切换界面，Esc 恢复本次载入时的内容。",
+            "编辑已有内容时按 Ctrl+Enter 立即保存且不切换界面，Esc 恢复本次载入时的内容。",
             "编辑时可用 Ctrl+B / Ctrl+I / Ctrl+K 快速插入粗体、斜体、链接。",
             "",
             "三、插入图片",

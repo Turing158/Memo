@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Memo.Services;
+using Memo.Utils;
 
 namespace Memo.Components.Dialogs;
 
@@ -10,6 +11,10 @@ public partial class ImageUrlDialog : Window {
     public ImageUrlDialog() {
         InitializeComponent();
         Opened += (_, _) => Dispatcher.UIThread.Post(() => this.FindControl<TextBox>("_urlBox")!.Focus());
+    }
+
+    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e) {
+        if (TitleBarDragHelper.CanStartDrag(this, e)) BeginMoveDrag(e);
     }
 
     private void OnInsertClick(object? sender, RoutedEventArgs e) => Submit();

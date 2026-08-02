@@ -54,7 +54,7 @@
     <Style Selector="Border.segment-option">
       <Setter Property="MinHeight" Value="34"/>
       <Setter Property="Padding" Value="10,0"/>
-      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Background" Value="{StaticResource TransparentBrush}"/>
       <Setter Property="CornerRadius" Value="9"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Transitions">
@@ -69,14 +69,14 @@
       <Setter Property="Background" Value="{StaticResource BgHoverBrush}"/>
     </Style>
     <Style Selector="Border.segment-option.selected:pointerover">
-      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Background" Value="{StaticResource TransparentBrush}"/>
     </Style>
 
     <Style Selector="Border.segment-option.pressed">
       <Setter Property="Background" Value="{StaticResource SurfaceActiveBrush}"/>
     </Style>
     <Style Selector="Border.segment-option.selected.pressed">
-      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Background" Value="{StaticResource TransparentBrush}"/>
     </Style>
     <Style Selector="TextBlock.segment-label">
       <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
@@ -104,7 +104,7 @@
       <Setter Property="RenderTransform" Value="translate(0px, 0.2px) scale(0.985)"/>
     </Style>
     <Style Selector="Border.segment-option.selected TextBlock.segment-label">
-      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="Foreground" Value="{StaticResource TextOnAccentBrush}"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
   </UserControl.Styles>
